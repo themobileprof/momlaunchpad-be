@@ -1,0 +1,312 @@
+# Quick Start Guide
+
+This guide will help you get the MomLaunchpad backend running quickly for testing.
+
+## Prerequisites
+
+- Go 1.24.3 or later
+- PostgreSQL 12+ running
+- Redis (optional)
+- DeepSeek API key
+
+## Step 1: Clone and Setup
+
+```bash
+cd /path/to/momlaunchpad-be
+
+# Copy environment template
+cp .env.example .env
+```
+
+## Step 2: Configure Environment
+
+Edit `.env` with your credentials:
+
+```env
+# Database
+DATABASE_URL=postgresql://username:password@localhost:5432/momlaunchpad?sslmode=disable
+
+# DeepSeek API
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
+
+# JWT Secret (generate a secure random string)
+JWT_SECRET=your-secure-jwt-secret-here
+
+# Server
+PORT=8080
+
+# Redis (optional)
+REDIS_URL=redis://localhost:6379/0
+```
+
+## Step 3: Run Database Migrations
+
+```bash
+# Using Makefile
+make migrate-up
+
+# Or manually with psql
+psql $DATABASE_URL -f migrations/001_init_schema.up.sql
+```
+
+## Step 4: Run Tests
+
+```bash
+# Run all tests
+make test
+
+# Or with coverage
+make test-coverage
+```
+
+## Step 5: Start the Server
+
+```bash
+# Production mode
+make run
+
+# Development mode with hot reload (requires air)
+make dev
+
+# Or run directly
+go run cmd/server/main.go
+```
+
+Server will start on `http://localhost:8080`
+
+## Step 6: Test the API
+
+### Register a User
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "password123",
+    "name": "Test User",
+    "language": "en"
+  }'
+```
+
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "uuid-here",
+    "email": "test@example.com",
+    "name": "Test User",
+    "language": "en"
+  }
+}
+```
+
+Save the token for subsequent requests.
+
+### Create a Reminder
+
+```bash
+export TOKEN="your-jwt-token-here"
+
+curl -X POST http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Prenatal checkup",
+    "description": "Monthly checkup with Dr. Smith",
+    "scheduled_time": "2024-02-01T14:00:00Z",
+    "priority": "high"
+  }'
+```
+
+### Get Reminders
+
+```bash
+curl http://localhost:8080/api/reminders \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Test WebSocket Chat
+
+Install `websocat` for WebSocket testing:
+
+```bash
+# Install websocat
+brew install websocat  # macOS
+# or
+cargo install websocat  # via Rust
+
+# Connect to chat
+websocat "ws://localhost:8080/ws/chat?token=$TOKEN"
+
+# Send messages (type and press Enter)
+{"content": "Hello! I'm 14 weeks pregnant"}
+{"content": "I'm feeling nauseous, is this normal?"}
+{"content": "When will my baby start kicking?"}
+```
+
+## Testing with curl (WebSocket upgrade)
+
+```bash
+# Test WebSocket upgrade
+curl -i -N \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+  "http://localhost:8080/ws/chat?token=$TOKEN"
+```
+
+## Test Small Talk (No AI)
+
+Small talk messages won't trigger AI or memory:
+
+```json
+{"content": "hello"}
+{"content": "hi there"}
+{"content": "thanks"}
+```
+
+Response will be instant canned responses like:
+- "I'm here with you. How can I help today?"
+
+## Test Pregnancy Questions (AI-Powered)
+
+These trigger the full AI pipeline:
+
+```json
+{"content": "When will my baby start kicking?"}
+{"content": "I'm experiencing morning sickness, what can I do?"}
+{"content": "Is it safe to exercise during pregnancy?"}
+```
+
+Response flow:
+1. Intent classification (pregnancy_question)
+2. Load memory (recent messages + facts)
+3. Build super-prompt
+4. Stream DeepSeek response
+5. Extract facts (e.g., pregnancy week)
+6. Suggest calendar reminders if applicable
+
+## Test Symptom Reports
+
+```json
+{"content": "I have severe headache and dizziness"}
+{"content": "I'm bleeding, should I be worried?"}
+```
+
+These will:
+- Get urgent priority
+- Suggest immediate calendar reminders
+- Store symptom facts
+
+## Troubleshooting
+
+### Database connection error
+```
+Error: failed to connect to database
+```
+
+**Solution:** Check your `DATABASE_URL` in `.env` and ensure PostgreSQL is running:
+```bash
+psql $DATABASE_URL -c "SELECT 1;"
+```
+
+### Migration errors
+```
+Error: migration already applied
+```
+
+**Solution:** Check migration status or rollback:
+```bash
+make migrate-down  # Rollback
+make migrate-up    # Apply again
+```
+
+### DeepSeek API error
+```
+Error: failed to call DeepSeek API
+```
+
+**Solution:** Verify your `DEEPSEEK_API_KEY` is valid:
+```bash
+curl -X POST https://api.deepseek.com/v1/chat/completions \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-chat",
+    "messages": [{"role": "user", "content": "test"}]
+  }'
+```
+
+### JWT errors
+```
+Error: invalid token
+```
+
+**Solution:** 
+- Ensure you're including the full token (no truncation)
+- Check token hasn't expired (7 day expiry)
+- Register/login to get a fresh token
+
+## Next Steps
+
+- Read [API.md](API.md) for complete API documentation
+- See [BACKEND_SPEC.md](BACKEND_SPEC.md) for architecture details
+- Review [.github/copilot-instructions.md](.github/copilot-instructions.md) for development guidelines
+
+## Common Development Commands
+
+```bash
+# Run tests
+make test
+
+# Build binary
+make build
+
+# Run with hot reload
+make dev
+
+# Apply migrations
+make migrate-up
+
+# Rollback migrations
+make migrate-down
+
+# Generate test coverage report
+make test-coverage
+
+# Initialize project (first time setup)
+make init
+```
+
+## Production Deployment
+
+1. Set environment variables on your VM
+2. Build the binary: `make build`
+3. Run with systemd or supervisor: `./bin/server`
+4. Use nginx as reverse proxy for HTTPS
+5. Setup PostgreSQL with proper credentials
+6. Enable Redis for caching (optional)
+
+Example systemd service file:
+
+```ini
+[Unit]
+Description=MomLaunchpad Backend
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/momlaunchpad-be
+Environment="DATABASE_URL=postgresql://..."
+Environment="DEEPSEEK_API_KEY=..."
+Environment="JWT_SECRET=..."
+ExecStart=/opt/momlaunchpad-be/bin/server
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```

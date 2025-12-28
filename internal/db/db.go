@@ -60,6 +60,26 @@ func New(cfg Config) (*DB, error) {
 	return &DB{sqlDB}, nil
 }
 
+// NewFromURL creates a new database connection from a connection string
+func NewFromURL(connectionString string) (*DB, error) {
+	sqlDB, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Set default connection pool settings
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+
+	// Test the connection
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return &DB{sqlDB}, nil
+}
+
 // Close closes the database connection
 func (db *DB) Close() error {
 	return db.DB.Close()
