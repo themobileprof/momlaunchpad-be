@@ -47,25 +47,46 @@ A Go-based conversational backend for pregnancy support chatbot (MVP).
   - Fact integration
   - 3 test cases passing
 
+### 5. Calendar Suggester (TDD ✓)
+- **Location:** `internal/calendar/`
+- **Coverage:** 92.3%
+- **Status:** Fully implemented with passing tests
+- **Features:**
+  - Intent-based reminder suggestions
+  - Priority classification (urgent/high/medium/low)
+  - Urgent keyword detection for symptoms
+  - Automated suggestion building
+  - 7 test cases passing
+
+### 6. Database Layer
+- **Location:** `internal/db/` + `migrations/`
+- **Status:** Schema applied, queries implemented
+- **Features:**
+  - PostgreSQL schema with 6 tables (users, messages, user_facts, reminders, languages, savings_entries)
+  - Connection pooling and lifecycle management
+  - Models for all entities
+  - CRUD queries implemented
+  - Migrations applied successfully
+
 ## 🚧 Next Steps
 
-1. Database layer (`internal/db/` + SQL migrations)
-2. Calendar suggester (`internal/calendar/`)
-3. Language manager (`internal/language/`)
-4. API handlers (`internal/api/` - auth, calendar, admin)
-5. WebSocket chat (`internal/ws/`)
-6. Main server (`cmd/server/main.go`)
+1. Language manager (`internal/language/`)
+2. API handlers (`internal/api/` - auth, calendar, admin)
+3. WebSocket chat (`internal/ws/`)
+4. Main server (`cmd/server/main.go`)
 
 ## 📊 Test Coverage
 
 ```
-✅ internal/classifier: 93.9% coverage
-✅ internal/memory: 85.5% coverage  
-✅ internal/prompt: 89.1% coverage
-✅ pkg/deepseek: 29.9% coverage (mock 100%)
+✅ internal/calendar: 92.3% coverage (7 tests)
+✅ internal/classifier: 93.9% coverage (31 tests)
+✅ internal/memory: 85.5% coverage (10 tests)
+✅ internal/prompt: 89.1% coverage (3 tests)
+✅ pkg/deepseek: 29.9% coverage (4 tests - mock focused)
 ```
 
-**Total: 18 test cases, ALL PASS**
+**Total: 55 test cases, ALL PASS**
+**Average coverage: 76.1%**
 
 ## Quick Start
 
@@ -91,14 +112,14 @@ momlaunchpad-be/
 │   ├── classifier/       # ✅ Intent classification (TDD) - 93.9%
 │   ├── memory/           # ✅ Memory management (TDD) - 85.5%
 │   ├── prompt/           # ✅ Prompt builder (TDD) - 89.1%
-│   ├── calendar/         # 🚧 Calendar suggestions
+│   ├── calendar/         # ✅ Calendar suggestions (TDD) - 92.3%
 │   ├── language/         # 🚧 Language manager
 │   ├── api/              # 🚧 HTTP handlers
 │   ├── ws/               # 🚧 WebSocket
-│   └── db/               # 🚧 Database layer
+│   └── db/               # ✅ Database layer
 ├── pkg/
 │   └── deepseek/         # ✅ DeepSeek client (TDD) - 29.9%
-└── migrations/           # 🚧 SQL migrations
+└── migrations/           # ✅ SQL migrations (applied)
 ```
 
 ## Testing
