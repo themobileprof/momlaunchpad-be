@@ -59,6 +59,30 @@ var (
 		},
 	}
 
+	// French fallbacks
+	frenchFallbacks = map[classifier.Intent]Response{
+		classifier.IntentSymptom: {
+			Content: "J'ai du mal à traiter votre message en ce moment. Si vous ressentez des symptômes graves comme des saignements, des douleurs sévères ou d'autres signes inquiétants, veuillez contacter immédiatement votre professionnel de santé ou appeler les services d'urgence.",
+			Action:  "emergency",
+		},
+		classifier.IntentPregnancyQ: {
+			Content: "J'ai un bref problème de connexion. Laissez-moi réessayer dans un moment. En attendant, si votre question est urgente, veuillez contacter votre professionnel de santé.",
+			Action:  "retry",
+		},
+		classifier.IntentScheduling: {
+			Content: "J'ai des difficultés en ce moment, mais votre calendrier est toujours accessible. Vous pouvez ajouter des rappels manuellement pendant que je reviens en ligne.",
+			Action:  "retry",
+		},
+		classifier.IntentSmallTalk: {
+			Content: "Je suis là ! J'ai un petit problème technique. Comment puis-je vous aider aujourd'hui ?",
+			Action:  "retry",
+		},
+		classifier.IntentUnclear: {
+			Content: "J'ai du mal à comprendre en ce moment. Pourriez-vous reformuler votre question ?",
+			Action:  "retry",
+		},
+	}
+
 	// Timeout-specific fallbacks
 	timeoutFallbacks = map[string]Response{
 		"en": {
@@ -67,6 +91,10 @@ var (
 		},
 		"es": {
 			Content: "Estoy tardando más de lo habitual en responder. Esto podría ser un problema temporal. Si tu pregunta es urgente, contacta a tu proveedor de salud.",
+			Action:  "retry",
+		},
+		"fr": {
+			Content: "Je prends plus de temps que d'habitude pour répondre. Cela pourrait être un problème temporaire. Si votre question est urgente, veuillez contacter votre professionnel de santé.",
 			Action:  "retry",
 		},
 	}
@@ -81,6 +109,10 @@ var (
 			Content: "Estoy temporalmente no disponible debido a dificultades técnicas. Volveré pronto. Para asuntos urgentes, contacta directamente a tu proveedor de salud.",
 			Action:  "contact_support",
 		},
+		"fr": {
+			Content: "Je suis temporairement indisponible en raison de difficultés techniques. Je reviendrai bientôt. Pour les questions urgentes, veuillez contacter directement votre professionnel de santé.",
+			Action:  "contact_support",
+		},
 	}
 )
 
@@ -91,6 +123,8 @@ func GetFallbackResponse(intent classifier.Intent, language string) Response {
 	switch language {
 	case "es":
 		fallbacks = spanishFallbacks
+	case "fr":
+		fallbacks = frenchFallbacks
 	default:
 		fallbacks = englishFallbacks
 	}
@@ -100,16 +134,22 @@ func GetFallbackResponse(intent classifier.Intent, language string) Response {
 	}
 
 	// Default fallback
-	if language == "es" {
+	switch language {
+	case "es":
 		return Response{
 			Content: "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo.",
 			Action:  "retry",
 		}
-	}
-
-	return Response{
-		Content: "I'm sorry, I'm having technical difficulties. Please try again.",
-		Action:  "retry",
+	case "fr":
+		return Response{
+			Content: "Je suis désolé, j'ai des difficultés techniques. Veuillez réessayer.",
+			Action:  "retry",
+		}
+	default:
+		return Response{
+			Content: "I'm sorry, I'm having technical difficulties. Please try again.",
+			Action:  "retry",
+		}
 	}
 }
 

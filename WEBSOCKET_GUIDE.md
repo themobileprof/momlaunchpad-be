@@ -105,6 +105,8 @@ _channel.sink.add(jsonEncode({'content': 'remind me to take vitamins'}));
 
 The server sends **multiple message types**:
 
+**Note:** Backend currently supports **English (en)**, **Spanish (es)**, and **French (fr)**.
+
 #### 1. Streaming AI Response
 
 ```json
@@ -136,7 +138,12 @@ void _handleMessage(dynamic data) {
       break;
       
     case 'calendar':
-      _showCalendarSuggestion(message['message']);
+      final suggestionData = message['data'];
+      _showCalendarSuggestion(
+        title: suggestionData['title'],
+        description: suggestionData['description'],
+        suggestedTime: DateTime.parse(suggestionData['suggested_time']),
+      );
       break;
       
     case 'error':
@@ -151,11 +158,16 @@ void _handleMessage(dynamic data) {
 ```json
 {
   "type": "calendar",
-  "message": "Would you like to set a reminder to monitor this symptom?"
+  "data": {
+    "type": "reminder",
+    "title": "Monitor symptom",
+    "description": "Check in on nausea levels",
+    "suggested_time": "2024-03-15T14:00:00Z"
+  }
 }
 ```
 
-**UI Action:** Show a button/dialog asking user to confirm reminder creation.
+**UI Action:** Show a button/dialog asking user to confirm reminder creation. Use the structured `data` object to pre-fill reminder details.
 
 #### 3. Response Complete
 
@@ -492,8 +504,13 @@ class ChatProvider extends ChangeNotifier {
           break;
           
         case 'calendar':
-          // Show calendar suggestion
-          _showCalendarSuggestion(message['message']);
+          // Show calendar suggestion (structured data)
+          final data = message['data'];
+          _showCalendarSuggestion(
+            data['title'],
+            data['description'],
+            DateTime.parse(data['suggested_time']),
+          );
           break;
           
         case 'error':
@@ -518,9 +535,11 @@ class ChatProvider extends ChangeNotifier {
     debugPrint('WebSocket disconnected');
   }
   
-  void _showCalendarSuggestion(String message) {
+  void _showCalendarSuggestion(String title, String description, DateTime suggestedTime) {
     // Emit event for UI to show dialog
-    debugPrint('Calendar suggestion: $message');
+    debugPrint('Calendar suggestion: $title at $suggestedTime');
+    debugPrint('Description: $description');
+    // TODO: Show dialog with pre-filled reminder details
   }
   
   void dispose() {
@@ -852,12 +871,273 @@ class MessageRepository {
 
 ---
 
-## Next Steps
+## Frequently Asked Questions
 
-1. Implement `ChatProvider` with Provider or Riverpod
-2. Add reconnection logic for production
-3. Implement message persistence with Hive
-4. Add network monitoring with connectivity_plus
-5. Test with real DeepSeek API responses
+### Q: Which languages are supported?
+
+**A:** Currently **English (en)**, **Spanish (es)**, and **French (fr)**.
+
+- Fallback responses exist for EN/ES/FR
+- System prompts support EN/ES/FR
+- Admin can add more languages via database, but requires translation work
+- All three languages have complete fallback coverage
+
+**Frontend should:**
+- Detect device language on first launch
+- Default to English if device language is not EN/ES/FR
+- Allow manual language switch in settings (English/Spanish/French)
+- Store user's language preference for super-prompt construction
+
+---
+
+### Q: Should I use Provider, Riverpod, or Bloc?
+
+**A:** The examples use Provider for simplicity, but **any state management solution works**. The key pattern is:
+
+1. Manage WebSocket connection lifecycle
+2. Listen to incoming messages
+3. Concatenate streaming chunks
+4. Notify UI on updates
+
+Choose based on your team's preference. The `ChatProvider` example can be adapted to Riverpod `StateNotifier` or Bloc `Cubit` easily.
+
+---
+
+### Q: How do I implement audio chat (voice recording)?
+
+**A:** The backend is **text-only**. Audio support is "indirect" - you must:
+
+1. **Record audio** on mobile (flutter_sound, record)
+2. **Convert to text** using client-side STT:
+   - Google Cloud Speech-to-Text
+   - AWS Transcribe
+   - Device native STT (speech_to_text package)
+3. **Send text** to WebSocket (same as typed messages)
+4. **Receive text** response from AI
+5. **Convert to speech** using TTS:
+   - flutter_tts package
+   - Google Cloud TTS
+   - Device native TTS
+
+**Backend does NOT provide:**
+- ❌ STT endpoint
+- ❌ TTS endpoint
+- ❌ Audio file uploads
+
+**Example flow:**
+```dart
+// 1. Record audio
+final audioFile = await recorder.stop();
+
+// 2. Send to STT service (client-side)
+final text = await googleSpeech.recognize(audioFile);
+
+// 3. Send text to backend via WebSocket
+chatProvider.sendMessage(text);
+
+// 4. Receive text response
+// 5. Convert to speech (client-side)
+await flutterTts.speak(response);
+```
+
+---
+
+### Q: What about admin language management UI?
+
+**A:** Admin features are **out of scope** for mobile app integration.
+
+The admin endpoints (`/api/admin/languages`) are designed for a **separate web dashboard**, not the mobile app. Mobile users cannot:
+- Add new languages
+- Enable/disable languages
+- Modify system prompts
+
+If you're building the **admin web dashboard** (separate project), see:
+- [`API.md`](API.md) - Admin endpoints (HTTP only, no WebSocket)
+- [`BACKEND_SPEC.md`](BACKEND_SPEC.md) - Admin language workflow
+
+---
+
+### Q: How do I test WebSocket integration?
+
+**A:** Use mocking for unit tests:
+
+#### Mock WebSocket (Dart Test)
+
+```dart
+import 'package:mockito/mockito.dart';
+import 'package:test/test.dart';
+
+class MockWebSocketChannel extends Mock implements WebSocketChannel {}
+
+void main() {
+  test('ChatProvider handles streaming messages', () async {
+    final mockChannel = MockWebSocketChannel();
+    final streamController = StreamController<String>();
+    
+    when(mockChannel.stream).thenAnswer((_) => streamController.stream);
+    
+    final chatProvider = ChatProvider(channel: mockChannel);
+    
+    // Simulate streaming chunks
+    streamController.add('{"type":"message","content":"Hello "}');
+    streamController.add('{"type":"message","content":"there!"}');
+    streamController.add('{"type":"done"}');
+    
+    await Future.delayed(Duration(milliseconds: 100));
+    
+    expect(chatProvider.messages.last.content, equals('Hello there!'));
+    expect(chatProvider.messages.last.isStreaming, isFalse);
+  });
+  
+  test('ChatProvider handles rate limit error', () async {
+    final mockChannel = MockWebSocketChannel();
+    final streamController = StreamController<String>();
+    
+    when(mockChannel.stream).thenAnswer((_) => streamController.stream);
+    
+    final chatProvider = ChatProvider(channel: mockChannel);
+    
+    // Simulate rate limit error
+    streamController.add('{"type":"error","message":"Rate limit exceeded"}');
+    
+    await Future.delayed(Duration(milliseconds: 100));
+    
+    expect(chatProvider.hasError, isTrue);
+    expect(chatProvider.errorMessage, contains('Rate limit'));
+  });
+}
+```
+
+#### Integration Testing (Real Backend)
+
+```dart
+// test/integration/websocket_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  
+  testWidgets('Send message and receive response', (tester) async {
+    // Launch app
+    await tester.pumpWidget(MyApp());
+    
+    // Login first
+    await tester.enterText(find.byKey(Key('email')), 'test@example.com');
+    await tester.enterText(find.byKey(Key('password')), 'password');
+    await tester.tap(find.byKey(Key('login_button')));
+    await tester.pumpAndSettle();
+    
+    // Navigate to chat
+    await tester.tap(find.byIcon(Icons.chat));
+    await tester.pumpAndSettle();
+    
+    // Send message
+    await tester.enterText(find.byKey(Key('message_input')), 'Hello');
+    await tester.tap(find.byKey(Key('send_button')));
+    
+    // Wait for response (streaming)
+    await tester.pumpAndSettle(Duration(seconds: 5));
+    
+    // Verify AI response received
+    expect(find.text('Hello'), findsOneWidget);
+    expect(find.byType(MessageBubble), findsAtLeastNWidgets(2)); // User + AI
+  });
+}
+```
+
+#### Mock WebSocket Server (for Development)
+
+```dart
+// test/mocks/mock_websocket_server.dart
+import 'dart:io';
+
+class MockWebSocketServer {
+  HttpServer? _server;
+  
+  Future<void> start() async {
+    _server = await HttpServer.bind('localhost', 8080);
+    
+    _server!.transform(WebSocketTransformer()).listen((WebSocket ws) {
+      ws.listen((message) {
+        final data = jsonDecode(message);
+        
+        // Simulate streaming response
+        ws.add('{"type":"message","content":"Mock "}');
+        Future.delayed(Duration(milliseconds: 100), () {
+          ws.add('{"type":"message","content":"response"}');
+        });
+        Future.delayed(Duration(milliseconds: 200), () {
+          ws.add('{"type":"done"}');
+        });
+      });
+    });
+  }
+  
+  Future<void> stop() async {
+    await _server?.close();
+  }
+}
+
+// Usage in tests
+setUp(() async {
+  mockServer = MockWebSocketServer();
+  await mockServer.start();
+});
+
+tearDown(() async {
+  await mockServer.stop();
+});
+```
+
+---
+
+### Q: Where is the Flutter code?
+
+**A:** This is the **backend repository** - there is no Flutter code here.
+
+This guide helps you **integrate your Flutter app** with this backend. You will:
+
+1. **Create a new Flutter project** (or use existing)
+2. **Copy the code examples** from this guide
+3. **Customize** for your app's architecture
+4. **Connect** to this backend's WebSocket endpoint
+
+**Repository structure:**
+```
+momlaunchpad-be/          ← You are here (Backend - Go)
+  ├── cmd/server/
+  ├── internal/
+  └── WEBSOCKET_GUIDE.md  ← Integration docs for Flutter devs
+
+momlaunchpad-mobile/      ← Your Flutter app (separate repo)
+  ├── lib/
+  │   ├── providers/
+  │   │   └── chat_provider.dart    ← Copy from this guide
+  │   └── screens/
+  │       └── chat_screen.dart      ← Copy from this guide
+  └── pubspec.yaml
+```
+
+**Next steps for frontend team:**
+1. Create Flutter project: `flutter create momlaunchpad_mobile`
+2. Add dependencies: `web_socket_channel`, `provider`, `flutter_secure_storage`
+3. Implement `ChatProvider` (copy from this guide)
+4. Build chat UI (copy `ChatScreen` example)
+5. Connect to backend: `ws://your-backend-url/ws/chat`
+
+---
+
+## Next Steps (Frontend Implementation)
+
+These are **frontend-only tasks** - the backend is complete and ready:
+
+1. **Implement `ChatProvider`** - Copy the example above, customize for your state management (Provider/Riverpod/Bloc)
+2. **Add reconnection logic** - Use the `ReconnectionManager` example for production resilience
+3. **Message persistence** - Use Hive/SharedPreferences to cache chat history offline
+4. **Network monitoring** - Add `connectivity_plus` to detect network changes and auto-reconnect
+5. **Test with backend** - Backend WebSocket is fully functional at `/ws/chat`
+
+**Backend Status:** ✅ Complete - WebSocket, rate limiting, error handling, and streaming all implemented.
 
 For complete API documentation, see [`API.md`](API.md).

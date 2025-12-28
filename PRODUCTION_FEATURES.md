@@ -50,7 +50,7 @@ wsLimiter := middleware.NewWebSocketLimiter(10, time.Minute)
 - **Context timeout:** 30 seconds per AI call
 - **Circuit breaker:** 5 failures → 5-minute cooldown → half-open testing
 - **Malformed chunk validation:** Checks for empty choices array
-- **Fallback system:** Intent-based, multilingual (EN/ES)
+- **Fallback system:** Intent-based, multilingual (EN/ES/FR)
 - **Emergency handling:** Different responses for symptom reports
 
 ### Circuit Breaker States
@@ -64,17 +64,20 @@ wsLimiter := middleware.NewWebSocketLimiter(10, time.Minute)
 ```
 EN: "I'm taking longer than usual. Please try rephrasing your question."
 ES: "Estoy tardando más de lo normal. Por favor reformula tu pregunta."
+FR: "Je prends plus de temps que d'habitude. Veuillez reformuler votre question."
 ```
 
 **Circuit open (symptom report):**
 ```
 EN: "I'm having technical difficulties. If this is urgent, please contact your healthcare provider immediately."
 ES: "Tengo dificultades técnicas. Si esto es urgente, contacta a tu proveedor de salud de inmediato."
+FR: "J'ai des difficultés techniques. Si c'est urgent, veuillez contacter immédiatement votre professionnel de santé."
 ```
 
 ### Files
 - `internal/circuitbreaker/breaker.go` - Circuit breaker implementation
-- `internal/fallback/responses.go` - Intent-based fallback messages
+- `internal/fallback/responses.go` - Intent-based fallback messages (EN/ES/FR)
+- `internal/fallback/responses_test.go` - Comprehensive test coverage
 - `internal/ws/chat.go` - Integrated error handling
 
 ### Handled Failure Scenarios
