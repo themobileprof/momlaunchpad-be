@@ -102,6 +102,9 @@ func main() {
 	// Apply CORS middleware
 	router.Use(middleware.CORS())
 
+	// Apply global rate limiting (100 req/sec per IP, burst of 200)
+	router.Use(middleware.PerIP(100.0/60.0, 200)) // ~1.67 req/sec = 100/min
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -118,9 +121,10 @@ func main() {
 		auth.GET("/me", middleware.JWTAuth(jwtSecret), authHandler.Me)
 	}
 
-	// Calendar routes (protected)
+	// Calendar routes (protected + per-user rate limiting)
 	calendarGroup := router.Group("/api/reminders")
 	calendarGroup.Use(middleware.JWTAuth(jwtSecret))
+	calendarGroup.Use(middleware.PerUser(500.0/3600.0, 100)) // 500/hour per user
 	{
 		calendarGroup.GET("", calendarHandler.GetReminders)
 		calendarGroup.POST("", calendarHandler.CreateReminder)

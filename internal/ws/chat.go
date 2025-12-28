@@ -2,20 +2,25 @@ package ws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
+	"github.com/themobileprof/momlaunchpad-be/internal/circuitbreaker"
 	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
+	"github.com/themobileprof/momlaunchpad-be/internal/fallback"
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
+	"github.com/themobileprof/momlaunchpad-be/internal/privacy"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
@@ -28,14 +33,17 @@ var upgrader = websocket.Upgrader{
 
 // ChatHandler handles WebSocket chat connections
 type ChatHandler struct {
-	classifier     *classifier.Classifier
-	memoryManager  *memory.MemoryManager
-	promptBuilder  *prompt.Builder
-	deepseekClient deepseek.Client
-	calSuggester   *calendar.Suggester
-	langManager    *language.Manager
-	db             *db.DB
-	jwtSecret      string
+	classifier      *classifier.Classifier
+	memoryManager   *memory.MemoryManager
+	promptBuilder   *prompt.Builder
+	deepseekClient  deepseek.Client
+	calSuggester    *calendar.Suggester
+	langManager     *language.Manager
+	db              *db.DB
+	jwtSecret       string
+	circuitBreaker  *circuitbreaker.CircuitBreaker
+	aiTimeout       time.Duration
+	wsLimiterPerMin int
 }
 
 // NewChatHandler creates a new chat handler
@@ -50,14 +58,17 @@ func NewChatHandler(
 	jwtSecret string,
 ) *ChatHandler {
 	return &ChatHandler{
-		classifier:     cls,
-		memoryManager:  mem,
-		promptBuilder:  pb,
-		deepseekClient: ds,
-		calSuggester:   cal,
-		langManager:    lm,
-		db:             database,
-		jwtSecret:      jwtSecret,
+		classifier:      cls,
+		memoryManager:   mem,
+		promptBuilder:   pb,
+		deepseekClient:  ds,
+		calSuggester:    cal,
+		langManager:     lm,
+		db:              database,
+		jwtSecret:       jwtSecret,
+		circuitBreaker:  circuitbreaker.NewCircuitBreaker(5, 5*time.Minute),
+		aiTimeout:       30 * time.Second,
+		wsLimiterPerMin: 10,
 	}
 }
 
@@ -123,6 +134,9 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 	log.Printf("WebSocket connected: user=%s, language=%s", userID, userLanguage)
 
+	// Create rate limiter for this connection
+	wsLimiter := middleware.NewWebSocketLimiter(h.wsLimiterPerMin)
+
 	// Listen for messages
 	for {
 		var msg IncomingMessage
@@ -133,18 +147,32 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 			break
 		}
 
+		// Rate limiting
+		if !wsLimiter.Allow() {
+			h.sendError(conn, "Too many messages. Please slow down.")
+			continue
+		}
+
 		if err := h.processMessage(c.Request.Context(), conn, userID, userLanguage, msg.Content); err != nil {
-			log.Printf("Error processing message: %v", err)
-			h.sendError(conn, err.Error())
+			log.Printf("Error processing message (sanitized): %s", privacy.SanitizeForLogging(err.Error()))
+			h.sendError(conn, "Sorry, I encountered an error processing your message.")
 		}
 	}
 }
 
 // processMessage processes a single chat message
 func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, userID, language, content string) error {
+	// Sanitize content for logging
+	log.Printf("Message received: userID=%s, length=%d", userID, len(content))
+
+	// Check for PII in message
+	if privacy.ContainsPII(content) {
+		log.Printf("Warning: Potential PII detected in message from user=%s", userID)
+	}
+
 	// Classify intent
 	result := h.classifier.Classify(content, language)
-	log.Printf("Intent: %s (confidence: %.2f)", result.Intent, result.Confidence)
+	log.Printf("Intent classified: %s (confidence: %.2f)", result.Intent, result.Confidence)
 
 	// Save user message
 	if _, err := h.db.SaveMessage(ctx, userID, "user", content); err != nil {
@@ -175,13 +203,25 @@ func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, 
 		}
 	}
 
-	// Build super-prompt
+	// Check circuit breaker state
+	if h.circuitBreaker.State() == circuitbreaker.StateOpen {
+		log.Printf("Circuit breaker open, using fallback response")
+		fbResp := fallback.GetCircuitOpenResponse(language)
+		h.sendMessage(conn, fbResp.Content)
+		h.sendDone(conn)
+		return nil
+	}
+
+	// Build super-prompt with PII sanitization
 	facts, _ := h.db.GetUserFacts(ctx, userID)
 	shortTermMsgs := h.memoryManager.GetShortTermMemory(userID)
 
+	// Sanitize user message before sending to AI
+	sanitizedContent := privacy.SanitizeForAPI(content)
+
 	promptReq := prompt.PromptRequest{
 		UserID:          userID,
-		UserMessage:     content,
+		UserMessage:     sanitizedContent,
 		Language:        language,
 		IsSmallTalk:     result.Intent == classifier.IntentSmallTalk,
 		ShortTermMemory: shortTermMsgs,
@@ -189,7 +229,10 @@ func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, 
 	}
 	messages := h.promptBuilder.BuildPrompt(promptReq)
 
-	// Call DeepSeek API
+	// Call DeepSeek API with circuit breaker and timeout
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, h.aiTimeout)
+	defer cancel()
+
 	req := deepseek.ChatRequest{
 		Model:       "deepseek-chat",
 		Messages:    messages,
@@ -198,21 +241,54 @@ func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, 
 		Stream:      true,
 	}
 
-	chunks, err := h.deepseekClient.StreamChatCompletion(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to call DeepSeek: %w", err)
-	}
-
-	// Stream response
 	var fullResponse strings.Builder
-	for chunk := range chunks {
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			content := chunk.Choices[0].Delta.Content
-			fullResponse.WriteString(content)
-			if err := h.sendMessage(conn, content); err != nil {
-				return err
+	err := h.circuitBreaker.Call(func() error {
+		chunks, err := h.deepseekClient.StreamChatCompletion(ctxWithTimeout, req)
+		if err != nil {
+			return err
+		}
+
+		// Stream response
+		for chunk := range chunks {
+			// Check for timeout
+			select {
+			case <-ctxWithTimeout.Done():
+				return context.DeadlineExceeded
+			default:
+			}
+
+			// Validate chunk structure
+			if len(chunk.Choices) == 0 {
+				log.Printf("Warning: Empty chunk received from DeepSeek")
+				continue
+			}
+
+			chunkContent := chunk.Choices[0].Delta.Content
+			if chunkContent != "" {
+				fullResponse.WriteString(chunkContent)
+				if err := h.sendMessage(conn, chunkContent); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
+	})
+
+	// Handle errors with appropriate fallbacks
+	if err != nil {
+		log.Printf("AI call failed: %v", err)
+
+		var fbResp fallback.Response
+		if errors.Is(err, context.DeadlineExceeded) {
+			fbResp = fallback.GetTimeoutResponse(language)
+		} else {
+			fbResp = fallback.GetFallbackResponse(result.Intent, language)
+		}
+
+		h.sendMessage(conn, fbResp.Content)
+		h.sendDone(conn)
+		return nil
+		// Add to memory
 	}
 
 	// Save assistant message
@@ -220,8 +296,6 @@ func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, 
 	if _, err := h.db.SaveMessage(ctx, userID, "assistant", assistantMsg); err != nil {
 		log.Printf("Failed to save assistant message: %v", err)
 	}
-
-	// Add to memory
 	h.memoryManager.AddMessage(userID, memory.Message{
 		Role:    "assistant",
 		Content: assistantMsg,

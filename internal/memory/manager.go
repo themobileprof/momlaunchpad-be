@@ -60,6 +60,15 @@ func (m *MemoryManager) AddMessage(userID string, msg Message) {
 	userMem.mu.Lock()
 	defer userMem.mu.Unlock()
 
+	// Check if session should reset (1 hour inactivity)
+	if len(userMem.ShortTerm) > 0 {
+		lastMsg := userMem.ShortTerm[len(userMem.ShortTerm)-1]
+		if time.Since(lastMsg.Timestamp) > time.Hour {
+			// Reset session - clear short-term memory
+			userMem.ShortTerm = make([]Message, 0, m.shortTermMemorySize)
+		}
+	}
+
 	// Add message to short-term memory
 	userMem.ShortTerm = append(userMem.ShortTerm, msg)
 
@@ -168,6 +177,25 @@ func (m *MemoryManager) ClearShortTermMemory(userID string) {
 	defer userMem.mu.Unlock()
 
 	userMem.ShortTerm = make([]Message, 0, m.shortTermMemorySize)
+}
+
+// ShouldResetSession checks if a user's session should be reset
+func (m *MemoryManager) ShouldResetSession(userID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	userMem, exists := m.users[userID]
+	if !exists || len(userMem.ShortTerm) == 0 {
+		return false
+	}
+
+	userMem.mu.RLock()
+	defer userMem.mu.RUnlock()
+
+	lastMsg := userMem.ShortTerm[len(userMem.ShortTerm)-1]
+
+	// Reset after 1 hour of inactivity
+	return time.Since(lastMsg.Timestamp) > time.Hour
 }
 
 // RemoveFact removes a specific fact from long-term memory
