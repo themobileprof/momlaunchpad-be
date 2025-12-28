@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 )
 
 var (
@@ -14,29 +13,22 @@ var (
 )
 
 // CreateUser creates a new user
-func (db *DB) CreateUser(ctx context.Context, email, passwordHash, name, language string) (*User, error) {
+func (db *DB) CreateUser(ctx context.Context, user *User) error {
 	query := `
-		INSERT INTO users (email, password_hash, name, language)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, email, password_hash, name, language, is_admin, created_at, updated_at
+		INSERT INTO users (email, password_hash, display_name, preferred_language, is_admin)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at, updated_at
 	`
 
-	user := &User{}
-	err := db.QueryRowContext(ctx, query, email, passwordHash, name, language).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
-	}
-
-	return user, nil
+	return db.QueryRowContext(ctx, query,
+		user.Email, user.PasswordHash, user.Name, user.Language, user.IsAdmin,
+	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 }
 
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, name, language, is_admin, created_at, updated_at
+		SELECT id, email, password_hash, display_name, preferred_language, is_admin, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -59,7 +51,7 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 // GetUserByID retrieves a user by ID
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, name, language, is_admin, created_at, updated_at
+		SELECT id, email, password_hash, display_name, preferred_language, is_admin, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -183,23 +175,17 @@ func (db *DB) GetUserFacts(ctx context.Context, userID string) ([]UserFact, erro
 }
 
 // CreateReminder creates a new reminder
-func (db *DB) CreateReminder(ctx context.Context, userID, title, description string, reminderTime time.Time) (*Reminder, error) {
+func (db *DB) CreateReminder(ctx context.Context, reminder *Reminder) error {
 	query := `
-		INSERT INTO reminders (user_id, title, description, reminder_time)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, user_id, title, description, reminder_time, is_completed, created_at, updated_at
+		INSERT INTO reminders (user_id, title, description, reminder_time, is_completed)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at, updated_at
 	`
 
-	reminder := &Reminder{}
-	err := db.QueryRowContext(ctx, query, userID, title, description, reminderTime).Scan(
-		&reminder.ID, &reminder.UserID, &reminder.Title, &reminder.Description,
-		&reminder.ReminderTime, &reminder.IsCompleted, &reminder.CreatedAt, &reminder.UpdatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reminder: %w", err)
-	}
-
-	return reminder, nil
+	return db.QueryRowContext(ctx, query,
+		reminder.UserID, reminder.Title, reminder.Description,
+		reminder.ReminderTime, reminder.IsCompleted,
+	).Scan(&reminder.ID, &reminder.CreatedAt, &reminder.UpdatedAt)
 }
 
 // GetUserReminders retrieves all reminders for a user
@@ -256,4 +242,74 @@ func (db *DB) GetEnabledLanguages(ctx context.Context) ([]Language, error) {
 	}
 
 	return languages, nil
+}
+
+// GetReminderByID retrieves a reminder by ID
+func (db *DB) GetReminderByID(ctx context.Context, id string) (*Reminder, error) {
+	query := `
+		SELECT id, user_id, title, description, reminder_time, is_completed, created_at, updated_at
+		FROM reminders
+		WHERE id = $1
+	`
+
+	reminder := &Reminder{}
+	err := db.QueryRowContext(ctx, query, id).Scan(
+		&reminder.ID, &reminder.UserID, &reminder.Title, &reminder.Description,
+		&reminder.ReminderTime, &reminder.IsCompleted, &reminder.CreatedAt, &reminder.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reminder: %w", err)
+	}
+
+	return reminder, nil
+}
+
+// UpdateReminder updates a reminder
+func (db *DB) UpdateReminder(ctx context.Context, reminder *Reminder) error {
+	query := `
+		UPDATE reminders
+		SET title = $1, description = $2, reminder_time = $3, is_completed = $4, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $5
+	`
+
+	result, err := db.ExecContext(ctx, query,
+		reminder.Title, reminder.Description, reminder.ReminderTime,
+		reminder.IsCompleted, reminder.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update reminder: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// DeleteReminder deletes a reminder
+func (db *DB) DeleteReminder(ctx context.Context, id string) error {
+	query := `DELETE FROM reminders WHERE id = $1`
+
+	result, err := db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete reminder: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }

@@ -68,25 +68,46 @@ A Go-based conversational backend for pregnancy support chatbot (MVP).
   - CRUD queries implemented
   - Migrations applied successfully
 
+### 7. Language Manager (TDD ✓)
+- **Location:** `internal/language/`
+- **Coverage:** 91.2%
+- **Status:** Fully implemented with passing tests
+- **Features:**
+  - Language validation with fallback to English
+  - Enable/disable language support
+  - Thread-safe concurrent access
+  - Default language protection (English cannot be disabled)
+  - 5 test functions with 18 test cases
+
+### 8. API Handlers
+- **Location:** `internal/api/`
+- **Status:** Core handlers implemented
+- **Features:**
+  - **Auth Handler**: Registration, login, JWT token generation
+  - **Calendar Handler**: Reminder CRUD operations with ownership validation
+  - **Middleware**: JWT authentication, CORS, admin-only access
+  - Password hashing with bcrypt
+  - Gin web framework integration
+  - Database integration complete
+
 ## 🚧 Next Steps
 
-1. Language manager (`internal/language/`)
-2. API handlers (`internal/api/` - auth, calendar, admin)
-3. WebSocket chat (`internal/ws/`)
-4. Main server (`cmd/server/main.go`)
+1. WebSocket chat handler (`internal/ws/`)
+2. Main server (`cmd/server/main.go`) with routing
 
 ## 📊 Test Coverage
 
 ```
 ✅ internal/calendar: 92.3% coverage (7 tests)
 ✅ internal/classifier: 93.9% coverage (31 tests)
+✅ internal/language: 91.2% coverage (18 tests)
 ✅ internal/memory: 85.5% coverage (10 tests)
 ✅ internal/prompt: 89.1% coverage (3 tests)
 ✅ pkg/deepseek: 29.9% coverage (4 tests - mock focused)
 ```
 
-**Total: 55 test cases, ALL PASS**
-**Average coverage: 76.1%**
+**Total: 73 test cases, ALL PASS**
+**Average coverage: 80.3%**
 
 ## Quick Start
 
@@ -113,8 +134,8 @@ momlaunchpad-be/
 │   ├── memory/           # ✅ Memory management (TDD) - 85.5%
 │   ├── prompt/           # ✅ Prompt builder (TDD) - 89.1%
 │   ├── calendar/         # ✅ Calendar suggestions (TDD) - 92.3%
-│   ├── language/         # 🚧 Language manager
-│   ├── api/              # 🚧 HTTP handlers
+│   ├── language/         # ✅ Language manager (TDD) - 91.2%
+│   ├── api/              # ✅ HTTP handlers (auth, calendar, middleware)
 │   ├── ws/               # 🚧 WebSocket
 │   └── db/               # ✅ Database layer
 ├── pkg/
