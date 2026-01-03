@@ -1,0 +1,62 @@
+name: Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      direction:
+        description: 'Migration direction'
+        required: true
+        type: choice
+        options:
+          - up
+          - down
+      steps:
+        description: 'Number of steps (for down only)'
+        required: false
+        default: '1'
+
+jobs:
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install migrate tool
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/
+          migrate -version
+      
+      - name: Set DATABASE_URL
+        id: db
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
+            echo "url=${{ secrets.STAGING_DATABASE_URL }}" >> $GITHUB_OUTPUT
+          else
+            echo "url=${{ secrets.DATABASE_URL }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run migrations UP
+        if: github.event.inputs.direction == 'up'
+        run: |
+          migrate -path ./migrations -database "${{ steps.db.outputs.url }}" up
+      
+      - name: Run migrations DOWN
+        if: github.event.inputs.direction == 'down'
+        run: |
+          migrate -path ./migrations -database "${{ steps.db.outputs.url }}" down ${{ github.event.inputs.steps }}
+      
+      - name: Verify migration status
+        run: |
+          migrate -path ./migrations -database "${{ steps.db.outputs.url }}" version

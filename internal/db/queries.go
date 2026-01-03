@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -28,7 +29,8 @@ func (db *DB) CreateUser(ctx context.Context, user *User) error {
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, is_admin, created_at, updated_at
+		SELECT id, email, password_hash, display_name, preferred_language, 
+		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -36,7 +38,8 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	user := &User{}
 	err := db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		&user.Language, &user.ExpectedDeliveryDate, &user.SavingsGoal,
+		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -51,7 +54,8 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 // GetUserByID retrieves a user by ID
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, is_admin, created_at, updated_at
+		SELECT id, email, password_hash, display_name, preferred_language, 
+		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -59,7 +63,8 @@ func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	user := &User{}
 	err := db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		&user.Language, &user.ExpectedDeliveryDate, &user.SavingsGoal,
+		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -312,4 +317,110 @@ func (db *DB) DeleteReminder(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+// UpdateUserEDD updates a user's expected delivery date
+func (db *DB) UpdateUserEDD(ctx context.Context, userID string, edd *time.Time) error {
+	query := `
+		UPDATE users
+		SET expected_delivery_date = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
+
+	result, err := db.ExecContext(ctx, query, edd, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update EDD: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// UpdateUserSavingsGoal updates a user's savings goal
+func (db *DB) UpdateUserSavingsGoal(ctx context.Context, userID string, goal float64) error {
+	query := `
+		UPDATE users
+		SET savings_goal = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
+
+	result, err := db.ExecContext(ctx, query, goal, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update savings goal: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// CreateSavingsEntry creates a new savings entry
+func (db *DB) CreateSavingsEntry(ctx context.Context, entry *SavingsEntry) error {
+	query := `
+		INSERT INTO savings_entries (user_id, amount, description, entry_date)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at
+	`
+
+	return db.QueryRowContext(ctx, query,
+		entry.UserID, entry.Amount, entry.Description, entry.EntryDate,
+	).Scan(&entry.ID, &entry.CreatedAt)
+}
+
+// GetUserSavingsEntries retrieves all savings entries for a user
+func (db *DB) GetUserSavingsEntries(ctx context.Context, userID string) ([]SavingsEntry, error) {
+	query := `
+		SELECT id, user_id, amount, description, entry_date, created_at
+		FROM savings_entries
+		WHERE user_id = $1
+		ORDER BY entry_date DESC
+	`
+
+	rows, err := db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get savings entries: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]SavingsEntry, 0)
+	for rows.Next() {
+		var entry SavingsEntry
+		if err := rows.Scan(&entry.ID, &entry.UserID, &entry.Amount, &entry.Description,
+			&entry.EntryDate, &entry.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan savings entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// GetTotalSavings calculates the total savings for a user
+func (db *DB) GetTotalSavings(ctx context.Context, userID string) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM savings_entries
+		WHERE user_id = $1
+	`
+
+	var total float64
+	err := db.QueryRowContext(ctx, query, userID).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get total savings: %w", err)
+	}
+
+	return total, nil
 }

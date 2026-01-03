@@ -85,6 +85,7 @@ func main() {
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(database, jwtSecret)
 	calendarHandler := api.NewCalendarHandler(database)
+	savingsHandler := api.NewSavingsHandler(database)
 	chatHandler := ws.NewChatHandler(
 		cls,
 		memMgr,
@@ -132,6 +133,18 @@ func main() {
 		calendarGroup.DELETE("/:id", calendarHandler.DeleteReminder)
 	}
 
+	// Savings routes (protected + per-user rate limiting)
+	savingsGroup := router.Group("/api/savings")
+	savingsGroup.Use(middleware.JWTAuth(jwtSecret))
+	savingsGroup.Use(middleware.PerUser(500.0/3600.0, 100)) // 500/hour per user
+	{
+		savingsGroup.GET("/summary", savingsHandler.GetSavingsSummary)
+		savingsGroup.GET("/entries", savingsHandler.GetSavingsEntries)
+		savingsGroup.POST("/entries", savingsHandler.CreateSavingsEntry)
+		savingsGroup.PUT("/edd", savingsHandler.UpdateEDD)
+		savingsGroup.PUT("/goal", savingsHandler.UpdateSavingsGoal)
+	}
+
 	// WebSocket chat route (protected via query param/header)
 	router.GET("/ws/chat", chatHandler.HandleChat)
 
@@ -152,6 +165,11 @@ func main() {
 		log.Printf("   POST   /api/reminders")
 		log.Printf("   PUT    /api/reminders/:id")
 		log.Printf("   DELETE /api/reminders/:id")
+		log.Printf("   GET    /api/savings/summary")
+		log.Printf("   GET    /api/savings/entries")
+		log.Printf("   POST   /api/savings/entries")
+		log.Printf("   PUT    /api/savings/edd")
+		log.Printf("   PUT    /api/savings/goal")
 		log.Printf("   WS     /ws/chat")
 		log.Printf("")
 		log.Printf("Press Ctrl+C to stop")

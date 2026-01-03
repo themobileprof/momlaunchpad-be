@@ -51,10 +51,29 @@ migrate-create: ## Create new migration (use NAME=your_migration_name)
 	migrate create -ext sql -dir migrations -seq $(NAME)
 
 docker-build: ## Build Docker image
-	docker build -t momlaunchpad-be:latest .
+	docker build -t momlaunchpad-api:latest .
 
 docker-run: ## Run Docker container
-	docker run -p 8080:8080 --env-file .env momlaunchpad-be:latest
+	docker run -p 8080:8080 --env-file .env momlaunchpad-api:latest
+
+docker-up: ## Start all services with docker-compose
+	docker-compose up -d
+
+docker-down: ## Stop all docker-compose services
+	docker-compose down
+
+docker-logs: ## View docker-compose logs
+	docker-compose logs -f backend
+
+docker-ps: ## Show docker-compose services status
+	docker-compose ps
+
+docker-dev: ## Start services in development mode
+	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+docker-clean: ## Remove all containers, volumes, and images
+	docker-compose down -v
+	docker rmi momlaunchpad-api:latest 2>/dev/null || true
 
 fmt: ## Format code
 	go fmt ./...

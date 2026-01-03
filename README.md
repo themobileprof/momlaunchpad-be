@@ -137,27 +137,60 @@ momlaunchpad-be/
 │   ├── classifier/       # ✅ Intent classification (TDD) - 93.9%
 │   ├── memory/           # ✅ Memory management (TDD) - 85.5%
 │   ├── prompt/           # ✅ Prompt builder (TDD) - 89.1%
-## 🚀 Running the Server
+## 🚀 Quick Start
 
-1. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your database credentials and API keys
-   ```
+### Local Development
 
-2. **Apply migrations:**
-   ```bash
-   make migrate-up
-   ```
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your database credentials and API keys
 
-3. **Run the server:**
-   ```bash
-   make run
-   # or for development with hot reload:
-   make dev
-   ```
+# 2. Apply migrations
+make migrate-up
 
-4. **Server will start on `http://localhost:8080`**
+# 3. Run the server
+make run
+# or for development with hot reload:
+make dev
+```
+
+### Docker Development
+
+```bash
+# 1. Setup environment
+cp .env.docker .env
+# Edit .env with your API keys
+
+# 2. Start all services
+docker-compose up -d
+
+# 3. View logs
+docker-compose logs -f backend
+```
+
+See [DOCKER.md](DOCKER.md) for complete Docker documentation (development only).
+
+### Production Deployment
+
+Production uses **GitHub Actions CI/CD pipelines** - no manual deployments.
+
+```bash
+# Deploy by pushing a version tag
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+
+# GitHub Actions automatically:
+# - Builds Docker image
+# - Runs security scans
+# - Deploys to production server
+# - Runs database migrations
+# - Verifies health checks
+```
+
+See [.github/CICD.md](.github/CICD.md) for complete CI/CD documentation.
+
+**Server will start on `http://localhost:8080`**
 
 ## 📋 API Endpoints
 
@@ -238,7 +271,13 @@ See [BACKEND_SPEC.md](BACKEND_SPEC.md) for complete architecture documentation.
 
 ## 📚 Documentation
 
+- [.github/CICD.md](.github/CICD.md) - **CI/CD pipelines & production deployment**
+- [DOCKER.md](DOCKER.md) - Docker for local development
 - [BACKEND_SPEC.md](BACKEND_SPEC.md) - Complete technical specification
+- [WEBSOCKET_GUIDE.md](WEBSOCKET_GUIDE.md) - Flutter WebSocket integration
+- [PRODUCTION_FEATURES.md](PRODUCTION_FEATURES.md) - Production readiness features
+- [QUICKSTART.md](QUICKSTART.md) - Quick start with examples
+- [API.md](API.md) - API documentation
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - AI agent guidelines
 - [.env.example](.env.example) - Environment configuration template
 

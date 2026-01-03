@@ -207,6 +207,133 @@ Authorization: Bearer <token>
 
 ---
 
+### Savings Tracker
+
+#### GET /api/savings/summary
+Get savings summary with EDD, goal, and progress (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "expected_delivery_date": "2026-09-15T00:00:00Z",
+  "savings_goal": 5000.00,
+  "total_saved": 400.50,
+  "progress_percentage": 8.01,
+  "days_until_delivery": 254
+}
+```
+
+#### GET /api/savings/entries
+Get all savings entries for the current user (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "amount": 250.50,
+    "description": "Baby clothes shopping",
+    "entry_date": "2026-01-03T00:00:00Z",
+    "created_at": "2026-01-03T12:36:23.820698Z"
+  },
+  {
+    "id": "uuid",
+    "amount": 150.00,
+    "description": "Weekly savings",
+    "entry_date": "2026-01-03T00:00:00Z",
+    "created_at": "2026-01-03T12:36:27.939641Z"
+  }
+]
+```
+
+#### POST /api/savings/entries
+Create a new savings entry (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "amount": 250.50,
+  "description": "Baby clothes shopping",
+  "entry_date": "2026-01-03T00:00:00Z"
+}
+```
+
+**Note:** `entry_date` is optional. If not provided, current date is used.
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "amount": 250.50,
+  "description": "Baby clothes shopping",
+  "entry_date": "2026-01-03T00:00:00Z",
+  "created_at": "2026-01-03T12:36:23.820698Z"
+}
+```
+
+#### PUT /api/savings/edd
+Update expected delivery date (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "expected_delivery_date": "2026-09-15T00:00:00Z"
+}
+```
+
+**Note:** Set to `null` to clear the EDD.
+
+**Response:**
+```json
+{
+  "message": "Expected delivery date updated successfully"
+}
+```
+
+#### PUT /api/savings/goal
+Update savings goal (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "savings_goal": 5000.00
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Savings goal updated successfully"
+}
+```
+
+---
+
 ### WebSocket Chat
 
 #### WS /ws/chat

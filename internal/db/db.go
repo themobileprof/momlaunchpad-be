@@ -87,14 +87,16 @@ func (db *DB) Close() error {
 
 // User represents a user in the database
 type User struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	Name         *string
-	Language     string
-	IsAdmin      bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                   string
+	Email                string
+	PasswordHash         string
+	Name                 *string
+	Language             string
+	ExpectedDeliveryDate *time.Time
+	SavingsGoal          *float64
+	IsAdmin              bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 // Message represents a chat message
@@ -137,4 +139,14 @@ type Language struct {
 	IsEnabled      bool
 	IsExperimental bool
 	CreatedAt      time.Time
+}
+
+// SavingsEntry represents a savings record
+type SavingsEntry struct {
+	ID          string
+	UserID      string
+	Amount      float64
+	Description *string
+	EntryDate   time.Time
+	CreatedAt   time.Time
 }
