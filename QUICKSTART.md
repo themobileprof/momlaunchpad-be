@@ -104,6 +104,55 @@ curl -X POST http://localhost:8080/api/auth/register \
 
 Save the token for subsequent requests.
 
+### Test OAuth (Google Sign-In)
+
+**Web Flow (Browser):**
+```bash
+# Open in browser
+open http://localhost:8080/api/auth/google
+
+# Or with curl (will redirect)
+curl -L http://localhost:8080/api/auth/google
+```
+
+**Mobile Flow (ID Token Verification):**
+```bash
+# Simulate mobile app sending ID token
+curl -X POST http://localhost:8080/api/auth/google/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE2M..."
+  }'
+```
+
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "uuid-here",
+    "email": "user@gmail.com",
+    "username": "user"
+  }
+}
+```
+
+**Testing Email-Based Account Linking:**
+```bash
+# 1. Register with email/password
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@gmail.com",
+    "password": "password123",
+    "name": "Test User"
+  }'
+
+# 2. Later, sign in with Google using same email
+# Backend will recognize the email and link accounts
+# Both auth methods will access the same user account
+```
+
 ### Create a Reminder
 
 ```bash

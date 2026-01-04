@@ -424,3 +424,75 @@ func (db *DB) GetTotalSavings(ctx context.Context, userID string) (float64, erro
 
 	return total, nil
 }
+
+// OAuth Provider Queries
+
+// CreateOAuthProvider links an OAuth provider to a user
+func (db *DB) CreateOAuthProvider(ctx context.Context, userID, provider, providerUserID, email string) error {
+	query := `
+		INSERT INTO oauth_providers (user_id, provider, provider_user_id, email, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		ON CONFLICT (provider, provider_user_id) 
+		DO UPDATE SET updated_at = NOW()
+	`
+
+	_, err := db.ExecContext(ctx, query, userID, provider, providerUserID, email)
+	if err != nil {
+		return fmt.Errorf("failed to create OAuth provider: %w", err)
+	}
+
+	return nil
+}
+
+// GetOAuthProvider retrieves OAuth provider info
+func (db *DB) GetOAuthProvider(ctx context.Context, provider, providerUserID string) (string, error) {
+	query := `
+		SELECT user_id 
+		FROM oauth_providers 
+		WHERE provider = $1 AND provider_user_id = $2
+	`
+
+	var userID string
+	err := db.QueryRowContext(ctx, query, provider, providerUserID).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get OAuth provider: %w", err)
+	}
+
+	return userID, nil
+}
+
+// GetUserOAuthProviders lists all OAuth providers for a user
+func (db *DB) GetUserOAuthProviders(ctx context.Context, userID string) ([]string, error) {
+	query := `
+		SELECT provider 
+		FROM oauth_providers 
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query OAuth providers: %w", err)
+	}
+	defer rows.Close()
+
+	var providers []string
+	for rows.Next() {
+		var provider string
+		if err := rows.Scan(&provider); err != nil {
+			return nil, fmt.Errorf("failed to scan provider: %w", err)
+		}
+		providers = append(providers, provider)
+	}
+
+	return providers, nil
+}
+
+// FindUserByEmailAcrossProviders finds a user by email regardless of auth method
+// This enables email-based account linking across Google, Apple, and local auth
+func (db *DB) FindUserByEmailAcrossProviders(ctx context.Context, email string) (*User, error) {
+	return db.GetUserByEmail(ctx, email)
+}

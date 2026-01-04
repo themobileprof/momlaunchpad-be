@@ -84,6 +84,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(database, jwtSecret)
+	oauthHandler := api.NewOAuthHandler(database)
 	calendarHandler := api.NewCalendarHandler(database)
 	savingsHandler := api.NewSavingsHandler(database)
 	chatHandler := ws.NewChatHandler(
@@ -120,6 +121,17 @@ func main() {
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.GET("/me", middleware.JWTAuth(jwtSecret), authHandler.Me)
+
+		// OAuth routes - Web flow (browser redirects)
+		auth.GET("/google", oauthHandler.GoogleLogin)
+		auth.GET("/google/callback", oauthHandler.GoogleCallback)
+
+		// OAuth routes - Mobile flow (ID token verification)
+		auth.POST("/google/token", oauthHandler.GoogleTokenAuth)
+
+		// Apple OAuth (future)
+		auth.GET("/apple", oauthHandler.AppleLogin)
+		auth.GET("/apple/callback", oauthHandler.AppleCallback)
 	}
 
 	// Calendar routes (protected + per-user rate limiting)
@@ -161,6 +173,11 @@ func main() {
 		log.Printf("   POST   /api/auth/register")
 		log.Printf("   POST   /api/auth/login")
 		log.Printf("   GET    /api/auth/me")
+		log.Printf("   GET    /api/auth/google (web)")
+		log.Printf("   GET    /api/auth/google/callback (web)")
+		log.Printf("   POST   /api/auth/google/token (mobile)")
+		log.Printf("   GET    /api/auth/apple (coming soon)")
+		log.Printf("   GET    /api/auth/apple/callback (coming soon)")
 		log.Printf("   GET    /api/reminders")
 		log.Printf("   POST   /api/reminders")
 		log.Printf("   PUT    /api/reminders/:id")

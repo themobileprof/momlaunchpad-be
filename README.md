@@ -75,9 +75,12 @@ All core components have been implemented following TDD methodology. The server 
 - **Location:** `internal/api/`
 - **Features:**
   - **Auth Handler**: Registration, login, JWT token generation (7 day expiry)
+  - **OAuth Handler**: Google Sign-In (web + mobile), Apple Sign-In (coming soon)
   - **Calendar Handler**: Reminder CRUD operations with ownership validation
   - **Middleware**: JWT authentication, CORS, admin-only access
   - Password hashing with bcrypt
+  - Multi-platform OAuth support (web, Android, iOS)
+  - Email-based account linking across providers
   - Gin web framework integration
 
 ### 9. WebSocket Chat Handler ✓
@@ -271,15 +274,68 @@ See [BACKEND_SPEC.md](BACKEND_SPEC.md) for complete architecture documentation.
 
 ## 📚 Documentation
 
-- [.github/CICD.md](.github/CICD.md) - **CI/CD pipelines & production deployment**
+- [API.md](API.md) - **Complete API documentation with OAuth examples**
+- [.github/CICD.md](.github/CICD.md) - CI/CD pipelines & production deployment
 - [DOCKER.md](DOCKER.md) - Docker for local development
 - [BACKEND_SPEC.md](BACKEND_SPEC.md) - Complete technical specification
 - [WEBSOCKET_GUIDE.md](WEBSOCKET_GUIDE.md) - Flutter WebSocket integration
 - [PRODUCTION_FEATURES.md](PRODUCTION_FEATURES.md) - Production readiness features
 - [QUICKSTART.md](QUICKSTART.md) - Quick start with examples
-- [API.md](API.md) - API documentation
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - AI agent guidelines
 - [.env.example](.env.example) - Environment configuration template
+
+## 🔐 OAuth Implementation
+
+### Supported Providers
+- ✅ **Google Sign-In** (Web + Mobile)
+- 🚧 **Apple Sign-In** (Coming soon)
+- ✅ **Email/Password** (Traditional auth)
+
+### Google OAuth Architecture
+
+**Three separate OAuth clients (same Google Cloud Project):**
+1. **Web Client** - Browser redirect flow
+2. **Android Client** - Flutter Android apps
+3. **iOS Client** - Flutter iOS apps
+
+**All clients validated by backend** via `GOOGLE_ALLOWED_CLIENT_IDS`
+
+### Endpoints
+
+**Web Flow (Browser):**
+- `GET /api/auth/google` - Initiate OAuth
+- `GET /api/auth/google/callback` - Handle callback
+
+**Mobile Flow (Flutter/React Native):**
+- `POST /api/auth/google/token` - Verify ID token
+
+### Email-Based Account Linking
+
+**Users are unified by email across:**
+- Different platforms (web, Android, iOS)
+- Different providers (Google, Apple, email/password)
+- Different devices
+
+**Example:** User signs up on Android with Google (`user@gmail.com`) → Later opens web app → Signs in with Google → Same account recognized ✅
+
+### Configuration
+
+Required environment variables:
+```bash
+# Google OAuth - Multiple clients
+GOOGLE_WEB_CLIENT_ID=your-web-client.apps.googleusercontent.com
+GOOGLE_ANDROID_CLIENT_ID=your-android-client.apps.googleusercontent.com
+GOOGLE_IOS_CLIENT_ID=your-ios-client.apps.googleusercontent.com
+GOOGLE_ALLOWED_CLIENT_IDS=web-client,android-client,ios-client
+GOOGLE_CLIENT_SECRET=your-secret
+
+# Apple OAuth (coming soon)
+APPLE_CLIENT_ID=your-service-id
+APPLE_TEAM_ID=your-team-id
+APPLE_IOS_BUNDLE_ID=com.yourapp.bundle
+```
+
+See [API.md](API.md) for detailed OAuth integration examples.
 
 ## License
 
