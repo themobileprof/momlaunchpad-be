@@ -1,26 +1,20 @@
 package ws
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
-	"github.com/themobileprof/momlaunchpad-be/internal/circuitbreaker"
+	"github.com/themobileprof/momlaunchpad-be/internal/chat"
 	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
-	"github.com/themobileprof/momlaunchpad-be/internal/fallback"
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
-	"github.com/themobileprof/momlaunchpad-be/internal/privacy"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
@@ -33,16 +27,9 @@ var upgrader = websocket.Upgrader{
 
 // ChatHandler handles WebSocket chat connections
 type ChatHandler struct {
-	classifier      *classifier.Classifier
-	memoryManager   *memory.MemoryManager
-	promptBuilder   *prompt.Builder
-	deepseekClient  deepseek.Client
-	calSuggester    *calendar.Suggester
-	langManager     *language.Manager
+	engine          *chat.Engine
 	db              *db.DB
 	jwtSecret       string
-	circuitBreaker  *circuitbreaker.CircuitBreaker
-	aiTimeout       time.Duration
 	wsLimiterPerMin int
 }
 
@@ -57,17 +44,13 @@ func NewChatHandler(
 	database *db.DB,
 	jwtSecret string,
 ) *ChatHandler {
+	// Create transport-agnostic engine
+	engine := chat.NewEngine(cls, mem, pb, ds, cal, lm, database)
+
 	return &ChatHandler{
-		classifier:      cls,
-		memoryManager:   mem,
-		promptBuilder:   pb,
-		deepseekClient:  ds,
-		calSuggester:    cal,
-		langManager:     lm,
+		engine:          engine,
 		db:              database,
 		jwtSecret:       jwtSecret,
-		circuitBreaker:  circuitbreaker.NewCircuitBreaker(5, 5*time.Minute),
-		aiTimeout:       30 * time.Second,
 		wsLimiterPerMin: 10,
 	}
 }
@@ -128,9 +111,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		return
 	}
 
-	// Validate language
-	langResult := h.langManager.Validate(user.Language)
-	userLanguage := langResult.Code
+	userLanguage := user.Language
 
 	log.Printf("WebSocket connected: user=%s, language=%s", userID, userLanguage)
 
@@ -153,256 +134,60 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 			continue
 		}
 
-		if err := h.processMessage(c.Request.Context(), conn, userID, userLanguage, msg.Content); err != nil {
-			log.Printf("Error processing message (sanitized): %s", privacy.SanitizeForLogging(err.Error()))
+		// Create WebSocket responder
+		responder := &wsResponder{conn: conn}
+
+		// Delegate to transport-agnostic engine
+		req := chat.ProcessRequest{
+			UserID:    userID,
+			Message:   msg.Content,
+			Language:  userLanguage,
+			Responder: responder,
+		}
+
+		if err := h.engine.ProcessMessage(c.Request.Context(), req); err != nil {
+			log.Printf("Error processing message: %v", err)
 			h.sendError(conn, "Sorry, I encountered an error processing your message.")
 		}
 	}
 }
 
-// processMessage processes a single chat message
-func (h *ChatHandler) processMessage(ctx context.Context, conn *websocket.Conn, userID, language, content string) error {
-	// Sanitize content for logging
-	log.Printf("Message received: userID=%s, length=%d", userID, len(content))
-
-	// Check for PII in message
-	if privacy.ContainsPII(content) {
-		log.Printf("Warning: Potential PII detected in message from user=%s", userID)
-	}
-
-	// Classify intent
-	result := h.classifier.Classify(content, language)
-	log.Printf("Intent classified: %s (confidence: %.2f)", result.Intent, result.Confidence)
-
-	// Save user message
-	if _, err := h.db.SaveMessage(ctx, userID, "user", content); err != nil {
-		return fmt.Errorf("failed to save message: %w", err)
-	}
-
-	// Add to memory
-	h.memoryManager.AddMessage(userID, memory.Message{
-		Role:    "user",
-		Content: content,
-	})
-
-	// Handle small talk without AI
-	if result.Intent == classifier.IntentSmallTalk {
-		response := h.getSmallTalkResponse(language)
-		if err := h.sendMessage(conn, response); err != nil {
-			return err
-		}
-		h.sendDone(conn)
-		return nil
-	}
-
-	// Check calendar suggestion
-	if shouldSuggest := h.calSuggester.ShouldSuggest(result.Intent, content); shouldSuggest.ShouldSuggest {
-		suggestion := h.calSuggester.BuildSuggestion(result.Intent, content)
-		if err := h.sendCalendarSuggestion(conn, suggestion); err != nil {
-			return err
-		}
-	}
-
-	// Check circuit breaker state
-	if h.circuitBreaker.State() == circuitbreaker.StateOpen {
-		log.Printf("Circuit breaker open, using fallback response")
-		fbResp := fallback.GetCircuitOpenResponse(language)
-		h.sendMessage(conn, fbResp.Content)
-		h.sendDone(conn)
-		return nil
-	}
-
-	// Build super-prompt with PII sanitization
-	facts, _ := h.db.GetUserFacts(ctx, userID)
-	shortTermMsgs := h.memoryManager.GetShortTermMemory(userID)
-
-	// Sanitize user message before sending to AI
-	sanitizedContent := privacy.SanitizeForAPI(content)
-
-	promptReq := prompt.PromptRequest{
-		UserID:          userID,
-		UserMessage:     sanitizedContent,
-		Language:        language,
-		IsSmallTalk:     result.Intent == classifier.IntentSmallTalk,
-		ShortTermMemory: shortTermMsgs,
-		Facts:           convertDBFactsToMemoryFacts(facts),
-	}
-	messages := h.promptBuilder.BuildPrompt(promptReq)
-
-	// Call DeepSeek API with circuit breaker and timeout
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, h.aiTimeout)
-	defer cancel()
-
-	req := deepseek.ChatRequest{
-		Model:       "deepseek-chat",
-		Messages:    messages,
-		Temperature: 0.7,
-		MaxTokens:   1000,
-		Stream:      true,
-	}
-
-	var fullResponse strings.Builder
-	err := h.circuitBreaker.Call(func() error {
-		chunks, err := h.deepseekClient.StreamChatCompletion(ctxWithTimeout, req)
-		if err != nil {
-			return err
-		}
-
-		// Stream response
-		for chunk := range chunks {
-			// Check for timeout
-			select {
-			case <-ctxWithTimeout.Done():
-				return context.DeadlineExceeded
-			default:
-			}
-
-			// Validate chunk structure
-			if len(chunk.Choices) == 0 {
-				log.Printf("Warning: Empty chunk received from DeepSeek")
-				continue
-			}
-
-			chunkContent := chunk.Choices[0].Delta.Content
-			if chunkContent != "" {
-				fullResponse.WriteString(chunkContent)
-				if err := h.sendMessage(conn, chunkContent); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-
-	// Handle errors with appropriate fallbacks
-	if err != nil {
-		log.Printf("AI call failed: %v", err)
-
-		var fbResp fallback.Response
-		if errors.Is(err, context.DeadlineExceeded) {
-			fbResp = fallback.GetTimeoutResponse(language)
-		} else {
-			fbResp = fallback.GetFallbackResponse(result.Intent, language)
-		}
-
-		h.sendMessage(conn, fbResp.Content)
-		h.sendDone(conn)
-		return nil
-		// Add to memory
-	}
-
-	// Save assistant message
-	assistantMsg := fullResponse.String()
-	if _, err := h.db.SaveMessage(ctx, userID, "assistant", assistantMsg); err != nil {
-		log.Printf("Failed to save assistant message: %v", err)
-	}
-	h.memoryManager.AddMessage(userID, memory.Message{
-		Role:    "assistant",
-		Content: assistantMsg,
-	})
-
-	// Extract facts (simplified - in production, use AI or rules)
-	// This is a placeholder for fact extraction logic
-	h.extractAndSaveFacts(ctx, userID, content, assistantMsg)
-
-	h.sendDone(conn)
-	return nil
+// wsResponder implements chat.Responder for WebSocket transport
+type wsResponder struct {
+	conn *websocket.Conn
 }
 
-// convertDBFactsToMemoryFacts converts database facts to memory facts
-func convertDBFactsToMemoryFacts(dbFacts []db.UserFact) []memory.UserFact {
-	memFacts := make([]memory.UserFact, len(dbFacts))
-	for i, f := range dbFacts {
-		memFacts[i] = memory.UserFact{
-			Key:        f.Key,
-			Value:      f.Value,
-			Confidence: f.Confidence,
-			UpdatedAt:  f.UpdatedAt,
-		}
-	}
-	return memFacts
-}
-
-// buildUserContext builds user context for prompt (legacy - not used anymore)
-func (h *ChatHandler) buildUserContext(ctx context.Context, userID string) map[string]interface{} {
-	user, _ := h.db.GetUserByID(ctx, userID)
-	facts, _ := h.db.GetUserFacts(ctx, userID)
-
-	context := make(map[string]interface{})
-
-	if user != nil && user.Name != nil {
-		context["name"] = *user.Name
-	}
-
-	// Convert facts to map
-	factsMap := make(map[string]string)
-	for _, fact := range facts {
-		factsMap[fact.Key] = fact.Value
-	}
-	context["facts"] = factsMap
-
-	return context
-}
-
-// extractAndSaveFacts extracts facts from conversation (simplified)
-func (h *ChatHandler) extractAndSaveFacts(ctx context.Context, userID, userMsg, aiMsg string) {
-	// This is a simplified version - in production, use AI to extract facts
-	// For now, just look for pregnancy week mentions
-	normalized := strings.ToLower(userMsg)
-
-	// Example: detect pregnancy week
-	if strings.Contains(normalized, "week") && strings.Contains(normalized, "pregnant") {
-		// Simple pattern matching - in production, use proper NLP
-		for i := 1; i <= 42; i++ {
-			weekStr := fmt.Sprintf("%d week", i)
-			if strings.Contains(normalized, weekStr) {
-				h.db.SaveOrUpdateFact(ctx, userID, "pregnancy_week", fmt.Sprintf("%d", i), 0.8)
-				break
-			}
-		}
-	}
-}
-
-// getSmallTalkResponse returns a canned response for small talk
-func (h *ChatHandler) getSmallTalkResponse(language string) string {
-	responses := map[string]string{
-		"en": "I'm here with you. How can I help today?",
-		"es": "Estoy aquí contigo. ¿Cómo puedo ayudarte hoy?",
-	}
-
-	if resp, ok := responses[language]; ok {
-		return resp
-	}
-	return responses["en"]
-}
-
-// sendMessage sends a message chunk to the client
-func (h *ChatHandler) sendMessage(conn *websocket.Conn, content string) error {
-	return conn.WriteJSON(OutgoingMessage{
+func (w *wsResponder) SendMessage(content string) error {
+	return w.conn.WriteJSON(OutgoingMessage{
 		Type:    "message",
 		Content: content,
 	})
 }
 
-// sendCalendarSuggestion sends a calendar suggestion to the client
-func (h *ChatHandler) sendCalendarSuggestion(conn *websocket.Conn, suggestion calendar.Suggestion) error {
-	return conn.WriteJSON(OutgoingMessage{
+func (w *wsResponder) SendCalendarSuggestion(suggestion calendar.Suggestion) error {
+	return w.conn.WriteJSON(OutgoingMessage{
 		Type: "calendar",
 		Data: suggestion,
 	})
 }
 
-// sendError sends an error message to the client
-func (h *ChatHandler) sendError(conn *websocket.Conn, message string) error {
-	return conn.WriteJSON(OutgoingMessage{
+func (w *wsResponder) SendError(message string) error {
+	return w.conn.WriteJSON(OutgoingMessage{
 		Type:    "error",
 		Content: message,
 	})
 }
 
-// sendDone signals that the response is complete
-func (h *ChatHandler) sendDone(conn *websocket.Conn) error {
-	return conn.WriteJSON(OutgoingMessage{
+func (w *wsResponder) SendDone() error {
+	return w.conn.WriteJSON(OutgoingMessage{
 		Type: "done",
+	})
+}
+
+// sendError is a helper for handler-level errors
+func (h *ChatHandler) sendError(conn *websocket.Conn, message string) error {
+	return conn.WriteJSON(OutgoingMessage{
+		Type:    "error",
+		Content: message,
 	})
 }
