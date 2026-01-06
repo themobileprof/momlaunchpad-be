@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -41,12 +42,27 @@ func NewHTTPClient(config Config) *HTTPClient {
 		config.Timeout = 30 * time.Second
 	}
 
+	// Optimized transport for high throughput and connection reuse
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
+	}
+
 	return &HTTPClient{
 		apiKey:  config.APIKey,
 		baseURL: config.BaseURL,
 		model:   config.Model,
 		httpClient: &http.Client{
-			Timeout: config.Timeout,
+			Timeout:   config.Timeout,
+			Transport: transport,
 		},
 		timeout: config.Timeout,
 	}
@@ -91,8 +107,8 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req ChatRequest) 
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Create channel for streaming chunks
-	ch := make(chan ChatChunk, 10)
+	// Create channel for streaming chunks (larger buffer for throughput)
+	ch := make(chan ChatChunk, 32)
 
 	// Start goroutine to read streaming response
 	go func() {

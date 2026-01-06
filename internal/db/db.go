@@ -67,10 +67,11 @@ func NewFromURL(connectionString string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Set default connection pool settings
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	// Optimized connection pool settings for high throughput
+	sqlDB.SetMaxOpenConns(50)                 // Increased from 25 for better concurrency
+	sqlDB.SetMaxIdleConns(25)                 // Increased from 5 to reduce connection churn
+	sqlDB.SetConnMaxLifetime(5 * time.Minute) // Keep connections alive
+	sqlDB.SetConnMaxIdleTime(2 * time.Minute) // Close idle connections after 2 min
 
 	// Test the connection
 	if err := sqlDB.Ping(); err != nil {

@@ -30,7 +30,9 @@ func NewBuilder() *Builder {
 
 // BuildPrompt constructs a super-prompt from the request
 func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
-	messages := make([]deepseek.ChatMessage, 0)
+	// Pre-allocate with estimated capacity (system + history + user)
+	capacity := 2 + len(req.ShortTermMemory)
+	messages := make([]deepseek.ChatMessage, 0, capacity)
 
 	// For small talk, return minimal prompt
 	if req.IsSmallTalk {
@@ -76,7 +78,9 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 
 // buildSystemPrompt creates the system prompt with user context
 func (b *Builder) buildSystemPrompt(req PromptRequest) string {
+	// Pre-allocate with estimated capacity to reduce allocations
 	var sb strings.Builder
+	sb.Grow(1024)
 
 	// Base instruction
 	sb.WriteString("You are a knowledgeable and empathetic pregnancy support assistant. ")

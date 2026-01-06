@@ -82,9 +82,9 @@ func (m *MemoryManager) AddMessage(userID string, msg Message) {
 // GetShortTermMemory retrieves the user's short-term memory
 func (m *MemoryManager) GetShortTermMemory(userID string) []Message {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	userMem, exists := m.users[userID]
+	m.mu.RUnlock()
+
 	if !exists {
 		return []Message{}
 	}
@@ -128,9 +128,9 @@ func (m *MemoryManager) AddFact(userID string, fact UserFact) {
 // GetFacts retrieves all facts for a user
 func (m *MemoryManager) GetFacts(userID string) []UserFact {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	userMem, exists := m.users[userID]
+	m.mu.RUnlock()
+
 	if !exists {
 		return []UserFact{}
 	}
@@ -149,9 +149,9 @@ func (m *MemoryManager) GetFacts(userID string) []UserFact {
 // GetFactByKey retrieves a specific fact by key
 func (m *MemoryManager) GetFactByKey(userID, key string) (UserFact, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	userMem, exists := m.users[userID]
+	m.mu.RUnlock()
+
 	if !exists {
 		return UserFact{}, false
 	}
@@ -182,15 +182,19 @@ func (m *MemoryManager) ClearShortTermMemory(userID string) {
 // ShouldResetSession checks if a user's session should be reset
 func (m *MemoryManager) ShouldResetSession(userID string) bool {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	userMem, exists := m.users[userID]
-	if !exists || len(userMem.ShortTerm) == 0 {
+	m.mu.RUnlock()
+
+	if !exists {
 		return false
 	}
 
 	userMem.mu.RLock()
 	defer userMem.mu.RUnlock()
+
+	if len(userMem.ShortTerm) == 0 {
+		return false
+	}
 
 	lastMsg := userMem.ShortTerm[len(userMem.ShortTerm)-1]
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
@@ -143,8 +144,23 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		return req.Responder.SendDone()
 	}
 
-	facts, _ := e.db.GetUserFacts(ctx, req.UserID)
-	shortTermMsgs := e.memoryManager.GetShortTermMemory(req.UserID)
+	// Fetch facts from DB and short-term memory concurrently for speed
+	var (
+		facts         []db.UserFact
+		shortTermMsgs []memory.Message
+		wg            sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		facts, _ = e.db.GetUserFacts(ctx, req.UserID)
+	}()
+	go func() {
+		defer wg.Done()
+		shortTermMsgs = e.memoryManager.GetShortTermMemory(req.UserID)
+	}()
+	wg.Wait()
+
 	sanitizedContent := privacy.SanitizeForAPI(req.Message)
 
 	promptReq := prompt.PromptRequest{

@@ -30,11 +30,13 @@ type Classifier struct {
 	pregnancyPatterns  []*regexp.Regexp
 	symptomPatterns    []*regexp.Regexp
 	schedulingPatterns []*regexp.Regexp
+	spaceNormalizer    *regexp.Regexp // Pre-compiled for performance
 }
 
 // NewClassifier creates a new intent classifier
 func NewClassifier() *Classifier {
 	return &Classifier{
+		spaceNormalizer: regexp.MustCompile(`\s+`), // Pre-compile once
 		greetingPatterns: compilePatterns([]string{
 			`\b(hi|hello|hey|hola|buenos días|buenas tardes|good morning|good afternoon)\b`,
 			`\bhow are you\b`,
@@ -182,9 +184,8 @@ func (c *Classifier) normalizeText(input string) string {
 	// Trim whitespace
 	text = strings.TrimSpace(text)
 
-	// Remove multiple spaces
-	spaceRe := regexp.MustCompile(`\s+`)
-	text = spaceRe.ReplaceAllString(text, " ")
+	// Remove multiple spaces using pre-compiled regex
+	text = c.spaceNormalizer.ReplaceAllString(text, " ")
 
 	// Remove trailing punctuation
 	text = strings.TrimRight(text, "!?.,;:")
