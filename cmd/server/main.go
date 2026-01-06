@@ -19,6 +19,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
+	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
@@ -63,6 +64,7 @@ func main() {
 	promptBuilder := prompt.NewBuilder()
 	calSuggester := calendar.NewSuggester()
 	langMgr := language.NewManager()
+	subMgr := subscription.NewManager(database.DB)
 
 	// Load enabled languages from database
 	ctx := context.Background()
@@ -87,6 +89,7 @@ func main() {
 	oauthHandler := api.NewOAuthHandler(database)
 	calendarHandler := api.NewCalendarHandler(database)
 	savingsHandler := api.NewSavingsHandler(database)
+	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
 	chatHandler := ws.NewChatHandler(
 		cls,
 		memMgr,
@@ -96,6 +99,7 @@ func main() {
 		langMgr,
 		database,
 		jwtSecret,
+		subMgr,
 	)
 
 	// Setup Gin router
@@ -134,9 +138,10 @@ func main() {
 		auth.GET("/apple/callback", oauthHandler.AppleCallback)
 	}
 
-	// Calendar routes (protected + per-user rate limiting)
+	// Calendar routes (protected + feature gate + per-user rate limiting)
 	calendarGroup := router.Group("/api/reminders")
 	calendarGroup.Use(middleware.JWTAuth(jwtSecret))
+	calendarGroup.Use(middleware.RequireFeature(subMgr, "calendar"))
 	calendarGroup.Use(middleware.PerUser(500.0/3600.0, 100)) // 500/hour per user
 	{
 		calendarGroup.GET("", calendarHandler.GetReminders)
@@ -145,9 +150,10 @@ func main() {
 		calendarGroup.DELETE("/:id", calendarHandler.DeleteReminder)
 	}
 
-	// Savings routes (protected + per-user rate limiting)
+	// Savings routes (protected + feature gate + per-user rate limiting)
 	savingsGroup := router.Group("/api/savings")
 	savingsGroup.Use(middleware.JWTAuth(jwtSecret))
+	savingsGroup.Use(middleware.RequireFeature(subMgr, "savings"))
 	savingsGroup.Use(middleware.PerUser(500.0/3600.0, 100)) // 500/hour per user
 	{
 		savingsGroup.GET("/summary", savingsHandler.GetSavingsSummary)
@@ -155,6 +161,36 @@ func main() {
 		savingsGroup.POST("/entries", savingsHandler.CreateSavingsEntry)
 		savingsGroup.PUT("/edd", savingsHandler.UpdateEDD)
 		savingsGroup.PUT("/goal", savingsHandler.UpdateSavingsGoal)
+	}
+
+	// Subscription routes (protected)
+	subscriptionGroup := router.Group("/api/subscription")
+	subscriptionGroup.Use(middleware.JWTAuth(jwtSecret))
+	{
+		subscriptionGroup.GET("/me", subscriptionHandler.GetMySubscription)
+		subscriptionGroup.GET("/features", subscriptionHandler.GetMyFeatures)
+		subscriptionGroup.GET("/quota/:feature", subscriptionHandler.GetMyQuota)
+	}
+
+	// Admin routes (protected + admin only)
+	adminGroup := router.Group("/api/admin")
+	adminGroup.Use(middleware.JWTAuth(jwtSecret))
+	// TODO: Add admin role check middleware
+	{
+		// Plan management
+		adminGroup.GET("/plans", subscriptionHandler.ListAllPlans)
+
+		// User subscription management
+		adminGroup.GET("/users/:userId/subscription", subscriptionHandler.GetUserSubscription)
+		adminGroup.PUT("/users/:userId/plan", subscriptionHandler.UpdateUserPlan)
+
+		// Quota management
+		adminGroup.GET("/users/:userId/quota/:feature", subscriptionHandler.GetUserQuotaUsage)
+		adminGroup.POST("/users/:userId/quota/:feature/reset", subscriptionHandler.ResetUserQuota)
+		adminGroup.GET("/quota/stats", subscriptionHandler.GetQuotaStats)
+
+		// Feature grants
+		adminGroup.POST("/users/:userId/features", subscriptionHandler.GrantFeature)
 	}
 
 	// WebSocket chat route (protected via query param/header)
@@ -187,6 +223,16 @@ func main() {
 		log.Printf("   POST   /api/savings/entries")
 		log.Printf("   PUT    /api/savings/edd")
 		log.Printf("   PUT    /api/savings/goal")
+		log.Printf("   GET    /api/subscription/me")
+		log.Printf("   GET    /api/subscription/features")
+		log.Printf("   GET    /api/subscription/quota/:feature")
+		log.Printf("   GET    /api/admin/plans")
+		log.Printf("   GET    /api/admin/users/:userId/subscription")
+		log.Printf("   PUT    /api/admin/users/:userId/plan")
+		log.Printf("   GET    /api/admin/users/:userId/quota/:feature")
+		log.Printf("   POST   /api/admin/users/:userId/quota/:feature/reset")
+		log.Printf("   GET    /api/admin/quota/stats")
+		log.Printf("   POST   /api/admin/users/:userId/features")
 		log.Printf("   WS     /ws/chat")
 		log.Printf("")
 		log.Printf("Press Ctrl+C to stop")

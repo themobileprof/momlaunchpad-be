@@ -16,6 +16,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
+	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
 
@@ -31,6 +32,7 @@ type ChatHandler struct {
 	db              *db.DB
 	jwtSecret       string
 	wsLimiterPerMin int
+	subManager      *subscription.Manager
 }
 
 // NewChatHandler creates a new chat handler
@@ -43,6 +45,7 @@ func NewChatHandler(
 	lm *language.Manager,
 	database *db.DB,
 	jwtSecret string,
+	subMgr *subscription.Manager,
 ) *ChatHandler {
 	// Create transport-agnostic engine
 	engine := chat.NewEngine(cls, mem, pb, ds, cal, lm, database)
@@ -52,6 +55,7 @@ func NewChatHandler(
 		db:              database,
 		jwtSecret:       jwtSecret,
 		wsLimiterPerMin: 10,
+		subManager:      subMgr,
 	}
 }
 
@@ -134,6 +138,18 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 			continue
 		}
 
+		// Check quota before processing
+		withinQuota, err := h.subManager.CheckQuota(c.Request.Context(), userID, "chat")
+		if err != nil {
+			log.Printf("Error checking quota for user %s: %v", userID, err)
+			h.sendError(conn, "Sorry, I encountered an error checking your quota.")
+			continue
+		}
+		if !withinQuota {
+			h.sendError(conn, "You've reached your message quota for this period. Please upgrade your plan or try again later.")
+			continue
+		}
+
 		// Create WebSocket responder
 		responder := &wsResponder{conn: conn}
 
@@ -148,6 +164,13 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		if err := h.engine.ProcessMessage(c.Request.Context(), req); err != nil {
 			log.Printf("Error processing message: %v", err)
 			h.sendError(conn, "Sorry, I encountered an error processing your message.")
+			continue
+		}
+
+		// Increment usage after successful processing
+		if err := h.subManager.IncrementUsage(c.Request.Context(), userID, "chat"); err != nil {
+			log.Printf("Error incrementing usage for user %s: %v", userID, err)
+			// Don't fail the request, just log the error
 		}
 	}
 }
