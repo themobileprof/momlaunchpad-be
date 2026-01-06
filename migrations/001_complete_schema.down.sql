@@ -1,0 +1,21 @@
+BEGIN;
+
+-- Drop all tables in reverse dependency order
+DROP TRIGGER IF EXISTS trg_assign_free_subscription ON users;
+
+DROP FUNCTION IF EXISTS assign_free_subscription();
+
+DROP TABLE IF EXISTS feature_usage CASCADE;
+DROP TABLE IF EXISTS subscriptions CASCADE;
+DROP TABLE IF EXISTS plan_features CASCADE;
+DROP TABLE IF EXISTS features CASCADE;
+DROP TABLE IF EXISTS plans CASCADE;
+DROP TABLE IF EXISTS oauth_providers CASCADE;
+DROP TABLE IF EXISTS savings_entries CASCADE;
+DROP TABLE IF EXISTS languages CASCADE;
+DROP TABLE IF EXISTS reminders CASCADE;
+DROP TABLE IF EXISTS user_facts CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+COMMIT;
