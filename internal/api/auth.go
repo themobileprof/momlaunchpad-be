@@ -17,7 +17,7 @@ type AuthHandler struct {
 	jwtSecret string
 }
 
-// NewAuthHandler creates a new auth handler
+// NewAuthHandler creates a new auth handler with DB as parameter
 func NewAuthHandler(database *db.DB, jwtSecret string) *AuthHandler {
 	return &AuthHandler{
 		db:        database,
@@ -27,10 +27,10 @@ func NewAuthHandler(database *db.DB, jwtSecret string) *AuthHandler {
 
 // RegisterRequest represents the registration request
 type RegisterRequest struct {
-	Email       string `json:"email" binding:"required,email"`
-	Password    string `json:"password" binding:"required,min=8"`
-	DisplayName string `json:"display_name"`
-	Language    string `json:"language"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+	Name     string `json:"name"`
+	Language string `json:"language"`
 }
 
 // LoginRequest represents the login request
@@ -47,11 +47,11 @@ type AuthResponse struct {
 
 // UserInfo represents basic user information
 type UserInfo struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name,omitempty"`
-	Language    string `json:"language"`
-	IsAdmin     bool   `json:"is_admin"`
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Name     string `json:"name,omitempty"`
+	Language string `json:"language"`
+	IsAdmin  bool   `json:"is_admin"`
 }
 
 // Register handles user registration
@@ -85,7 +85,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	user := &db.User{
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
-		Name:         &req.DisplayName,
+		Name:         &req.Name,
 		Language:     req.Language,
 		IsAdmin:      false,
 	}
@@ -173,16 +173,16 @@ func (h *AuthHandler) generateToken(user *db.User) (string, error) {
 
 // userToUserInfo converts a db.User to UserInfo
 func userToUserInfo(user *db.User) *UserInfo {
-	displayName := ""
+	name := ""
 	if user.Name != nil {
-		displayName = *user.Name
+		name = *user.Name
 	}
 
 	return &UserInfo{
-		ID:          user.ID,
-		Email:       user.Email,
-		DisplayName: displayName,
-		Language:    user.Language,
-		IsAdmin:     user.IsAdmin,
+		ID:       user.ID,
+		Email:    user.Email,
+		Name:     name,
+		Language: user.Language,
+		IsAdmin:  user.IsAdmin,
 	}
 }
