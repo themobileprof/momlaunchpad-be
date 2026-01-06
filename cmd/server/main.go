@@ -14,6 +14,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/api"
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
+	"github.com/themobileprof/momlaunchpad-be/internal/chat"
 	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
@@ -22,6 +23,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
+	"github.com/themobileprof/momlaunchpad-be/pkg/twilio"
 )
 
 func main() {
@@ -35,6 +37,9 @@ func main() {
 	databaseURL := getEnv("DATABASE_URL", "")
 	deepseekAPIKey := getEnv("DEEPSEEK_API_KEY", "")
 	jwtSecret := getEnv("JWT_SECRET", "")
+	twilioAccountSID := getEnv("TWILIO_ACCOUNT_SID", "")
+	twilioAuthToken := getEnv("TWILIO_AUTH_TOKEN", "")
+	twilioPhoneNumber := getEnv("TWILIO_PHONE_NUMBER", "")
 
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
@@ -66,6 +71,28 @@ func main() {
 	langMgr := language.NewManager()
 	subMgr := subscription.NewManager(database.DB)
 
+	// Initialize Twilio client (optional - only if credentials provided)
+	var twilioClient *twilio.VoiceClient
+	if twilioAccountSID != "" && twilioAuthToken != "" {
+		twilioClient = twilio.NewVoiceClient(twilio.VoiceConfig{
+			AccountSID:  twilioAccountSID,
+			AuthToken:   twilioAuthToken,
+			PhoneNumber: twilioPhoneNumber,
+		})
+		log.Println("✅ Twilio Voice initialized")
+	}
+
+	// Initialize chat engine (shared between WebSocket and Voice)
+	chatEngine := chat.NewEngine(
+		cls,
+		memMgr,
+		promptBuilder,
+		deepseekClient,
+		calSuggester,
+		langMgr,
+		database,
+	)
+
 	// Load enabled languages from database
 	ctx := context.Background()
 	languages, err := database.GetEnabledLanguages(ctx)
@@ -91,16 +118,18 @@ func main() {
 	savingsHandler := api.NewSavingsHandler(database)
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
 	chatHandler := ws.NewChatHandler(
-		cls,
-		memMgr,
-		promptBuilder,
-		deepseekClient,
-		calSuggester,
-		langMgr,
+		chatEngine,
 		database,
 		jwtSecret,
 		subMgr,
 	)
+
+	// Initialize voice handler (if Twilio configured)
+	var voiceHandler *api.VoiceHandler
+	if twilioClient != nil {
+		voiceHandler = api.NewVoiceHandler(twilioClient, chatEngine, database)
+		log.Println("✅ Voice handler initialized")
+	}
 
 	// Setup Gin router
 	router := gin.Default()
@@ -196,6 +225,17 @@ func main() {
 	// WebSocket chat route (protected via query param/header)
 	router.GET("/ws/chat", chatHandler.HandleChat)
 
+	// Twilio Voice routes (public webhooks, but user lookup enforces subscription)
+	if voiceHandler != nil {
+		voice := router.Group("/api/voice")
+		{
+			voice.POST("/incoming", voiceHandler.HandleIncoming)   // Initial call webhook
+			voice.POST("/gather", voiceHandler.HandleGather)       // Speech recognition callback
+			voice.POST("/status", voiceHandler.HandleStatus)       // Call status updates
+		}
+		log.Println("✅ Voice routes registered")
+	}
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -234,6 +274,11 @@ func main() {
 		log.Printf("   GET    /api/admin/quota/stats")
 		log.Printf("   POST   /api/admin/users/:userId/features")
 		log.Printf("   WS     /ws/chat")
+		if voiceHandler != nil {
+			log.Printf("   POST   /api/voice/incoming (Twilio webhook)")
+			log.Printf("   POST   /api/voice/gather (Twilio webhook)")
+			log.Printf("   POST   /api/voice/status (Twilio webhook)")
+		}
 		log.Printf("")
 		log.Printf("Press Ctrl+C to stop")
 

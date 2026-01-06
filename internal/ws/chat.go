@@ -11,13 +11,8 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
 	"github.com/themobileprof/momlaunchpad-be/internal/chat"
-	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
-	"github.com/themobileprof/momlaunchpad-be/internal/language"
-	"github.com/themobileprof/momlaunchpad-be/internal/memory"
-	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
-	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
 
 var upgrader = websocket.Upgrader{
@@ -37,19 +32,11 @@ type ChatHandler struct {
 
 // NewChatHandler creates a new chat handler
 func NewChatHandler(
-	cls *classifier.Classifier,
-	mem *memory.MemoryManager,
-	pb *prompt.Builder,
-	ds deepseek.Client,
-	cal *calendar.Suggester,
-	lm *language.Manager,
+	engine *chat.Engine,
 	database *db.DB,
 	jwtSecret string,
 	subMgr *subscription.Manager,
 ) *ChatHandler {
-	// Create transport-agnostic engine
-	engine := chat.NewEngine(cls, mem, pb, ds, cal, lm, database)
-
 	return &ChatHandler{
 		engine:          engine,
 		db:              database,

@@ -188,9 +188,8 @@ INSERT INTO features (feature_key, name, description) VALUES
     ('chat', 'Chat Access', 'AI chat support'),
     ('calendar', 'Calendar', 'Reminders and scheduling'),
     ('savings', 'Savings Tracker', 'Track savings progress'),
-    -- pairing with close healthcare providers
+    ('voice_calls', 'Voice Calls', 'Call in via phone for AI assistance'),
     ('healthcare_integration', 'Healthcare Integration', 'Connect with healthcare providers'),
-    -- Call a real number for assistance
     ('phone_support', 'Phone Support', 'Access to phone support services')
 ON CONFLICT (feature_key) DO NOTHING;
 
