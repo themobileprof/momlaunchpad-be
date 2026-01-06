@@ -77,21 +77,25 @@ All core components have been implemented following TDD methodology. The server 
   - **Auth Handler**: Registration, login, JWT token generation (7 day expiry)
   - **OAuth Handler**: Google Sign-In (web + mobile), Apple Sign-In (coming soon)
   - **Calendar Handler**: Reminder CRUD operations with ownership validation
-  - **Middleware**: JWT authentication, CORS, admin-only access
+  - **Voice Handler**: Twilio voice call integration for premium users
+  - **Middleware**: JWT authentication, CORS, admin-only access, feature gates
   - Password hashing with bcrypt
   - Multi-platform OAuth support (web, Android, iOS)
   - Email-based account linking across providers
   - Gin web framework integration
 
-### 9. WebSocket Chat Handler ✓
-- **Location:** `internal/ws/`
+### 9. Chat Engine & Handlers ✓
+- **Location:** `internal/chat/`, `internal/ws/`, `internal/api/voice.go`
 - **Features:**
-  - JWT-authenticated WebSocket connections
+  - **Shared Chat Engine**: Transport-agnostic AI processing
+  - **WebSocket Handler**: JWT-authenticated WebSocket connections
+  - **Voice Handler**: Twilio phone call integration (premium feature)
   - Real-time chat streaming
   - Pipeline: Classify → Load memory → Build prompt → Stream DeepSeek → Extract facts → Suggest reminders
   - Small talk handled without AI
   - Calendar suggestion integration
   - Fact extraction and persistence
+  - Multilingual voice responses (AWS Polly)
 
 ### 10. Main Server ✓
 - **Location:** `cmd/server/main.go`
@@ -131,11 +135,21 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
+## 🎯 Key Features
+
+- **Text Chat** (WebSocket): Real-time AI conversation with streaming responses
+- **Voice Calls** (Twilio): Premium users can call in for voice-based AI assistance
+- **Subscription System**: Free and premium tiers with quota management
+- **Multilingual**: English, Spanish, French with automatic language detection
+- **Smart Memory**: Short-term conversation history + long-term fact extraction
+- **Calendar Intelligence**: Automatic reminder suggestions based on conversation
+- **OAuth Support**: Google Sign-In (web + mobile), Apple Sign-In coming soon
+
 ## Project Structure
 
 ```
 momlaunchpad-be/
-├── cmd/server/           # 🚧 Entry point
+├── cmd/server/           # Entry point
 ├── internal/
 │   ├── classifier/       # ✅ Intent classification (TDD) - 93.9%
 │   ├── memory/           # ✅ Memory management (TDD) - 85.5%
@@ -200,19 +214,44 @@ See [.github/CICD.md](.github/CICD.md) for complete CI/CD documentation.
 ### Authentication (Public)
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login and get JWT token
+- `POST /api/auth/google/token` - Google OAuth (mobile)
+- `GET /api/auth/google` - Google OAuth (web)
 - `GET /api/auth/me` - Get current user (protected)
 
-### Calendar (Protected)
+### Subscription (Protected)
+- `GET /api/subscription/me` - Get user's subscription
+- `GET /api/subscription/features` - Get available features
+- `GET /api/subscription/quota/:feature` - Check quota usage
+
+### Calendar (Protected + Feature Gate)
 - `GET /api/reminders` - Get user's reminders
 - `POST /api/reminders` - Create reminder
 - `PUT /api/reminders/:id` - Update reminder
 - `DELETE /api/reminders/:id` - Delete reminder
 
-### WebSocket (Protected)
-- `WS /ws/chat` - Real-time chat with AI streaming
+### Savings (Protected + Feature Gate)
+- `GET /api/savings/summary` - Get savings summary
+- `GET /api/savings/entries` - Get savings entries
+- `POST /api/savings/entries` - Add savings entry
+
+### Chat
+- `WS /ws/chat` - Real-time chat with AI streaming (WebSocket, protected)
+
+### Voice (Twilio Webhooks, Premium Feature)
+- `POST /api/voice/incoming` - Handle incoming calls
+- `POST /api/voice/gather` - Process speech input
+- `POST /api/voice/status` - Call status updates
+
+### Admin (Protected + Admin Role)
+- `GET /api/admin/plans` - List subscription plans
+- `PUT /api/admin/users/:userId/plan` - Update user's plan
+- `GET /api/admin/users/:userId/quota/:feature` - Get quota usage
+- `POST /api/admin/users/:userId/quota/:feature/reset` - Reset quota
 
 ### Health Check
 - `GET /health` - Server health status
+
+See [API.md](API.md) for detailed API documentation.
 
 ## 📁 Project Structure
 
@@ -221,17 +260,33 @@ momlaunchpad-be/
 ├── cmd/
 │   └── server/           # ✅ Main server entry point
 ├── internal/
+│   ├── api/              # ✅ HTTP handlers
+│   │   ├── auth.go       # Authentication & OAuth
+│   │   ├── calendar.go   # Reminders CRUD
+│   │   ├── savings.go    # Savings tracker
+│   │   ├── subscription.go # Subscription management
+│   │   ├── voice.go      # Twilio voice webhooks
+│   │   └── middleware/   # JWT, CORS, feature gates, rate limiting
+│   ├── calendar/         # ✅ Calendar suggestions (TDD) - 92.3%
+│   ├── chat/             # ✅ Transport-agnostic chat engine
 │   ├── classifier/       # ✅ Intent classification (TDD) - 93.9%
+│   ├── db/               # ✅ Database layer with queries
+│   ├── language/         # ✅ Language manager (TDD) - 91.2%
 │   ├── memory/           # ✅ Memory manager (TDD) - 85.5%
 │   ├── prompt/           # ✅ Prompt builder (TDD) - 89.1%
-│   ├── calendar/         # ✅ Calendar suggestions (TDD) - 92.3%
-│   ├── language/         # ✅ Language manager (TDD) - 91.2%
-│   ├── api/              # ✅ HTTP handlers (auth, calendar, middleware)
-│   ├── ws/               # ✅ WebSocket chat handler
-│   └── db/               # ✅ Database layer
+│   ├── subscription/     # ✅ Subscription & quota system (TDD) - 97.2%
+│   └── ws/               # ✅ WebSocket chat handler
 ├── pkg/
-│   └── deepseek/         # ✅ DeepSeek client (TDD) - 29.9%
-└── migrations/           # ✅ SQL migrations (applied)
+│   ├── deepseek/         # ✅ DeepSeek AI client (TDD) - 29.9%
+│   └── twilio/           # ✅ Twilio voice client (TDD) - 100%
+├── migrations/           # ✅ SQL migrations
+├── .github/
+│   └── copilot-instructions.md  # AI agent development guide
+├── API.md                # Complete API documentation
+├── VOICE.md              # Twilio voice setup guide
+├── WEBSOCKET_GUIDE.md    # WebSocket implementation details
+├── QUICKSTART.md         # Getting started guide
+└── SUMMARY.md            # Implementation summary
 ```
 
 ## 🧪 Testing
@@ -263,24 +318,36 @@ See [BACKEND_SPEC.md](BACKEND_SPEC.md) for complete architecture documentation.
 
 **Key Principles:**
 - Backend is the brain, AI is a dependency
-- Determinism before intelligence
-- Rule-based classifier runs first
+- Determinism before intelligence (rule-based classifier first)
+- Transport-agnostic (shared engine for WebSocket & Voice)
 - MVP discipline (no feature creep)
+- Performance optimized (parallel operations, connection pooling)
 
 **Chat Flow:**
-1. Incoming message → Intent classifier (rule-based)
-2. Small talk → Canned response (no AI)
-3. Pregnancy/symptom → Load memory → Build super-prompt → DeepSeek streaming → Extract facts → Suggest reminders
+1. Incoming message → Feature gate & quota check
+2. Intent classifier (rule-based, deterministic)
+3. Small talk → Canned response (no AI)
+4. Pregnancy/symptom → Load memory (parallel DB fetch) → Build super-prompt → DeepSeek streaming → Extract facts → Suggest reminders → Increment quota
+
+**Performance Optimizations:**
+- Pre-compiled regex patterns in classifier
+- Parallel DB fetches for memory and facts
+- Connection pooling: 50 max connections, 25 idle
+- HTTP/2 with keep-alive for DeepSeek API
+- Fine-grained locking to reduce contention
+- Pre-allocated capacities in prompt builder
 
 ## 📚 Documentation
 
-- [API.md](API.md) - **Complete API documentation with OAuth examples**
-- [.github/CICD.md](.github/CICD.md) - CI/CD pipelines & production deployment
-- [DOCKER.md](DOCKER.md) - Docker for local development
-- [BACKEND_SPEC.md](BACKEND_SPEC.md) - Complete technical specification
+- [API.md](API.md) - **Complete API documentation with all endpoints**
+- [VOICE.md](VOICE.md) - **Twilio voice call setup & implementation**
+- [QUICKSTART.md](QUICKSTART.md) - Quick start guide with examples
 - [WEBSOCKET_GUIDE.md](WEBSOCKET_GUIDE.md) - Flutter WebSocket integration
-- [PRODUCTION_FEATURES.md](PRODUCTION_FEATURES.md) - Production readiness features
-- [QUICKSTART.md](QUICKSTART.md) - Quick start with examples
+- [BACKEND_SPEC.md](BACKEND_SPEC.md) - Complete technical specification
+- [PRODUCTION_FEATURES.md](PRODUCTION_FEATURES.md) - Production features summary
+- [SUMMARY.md](SUMMARY.md) - Implementation statistics
+- [.github/CICD.md](.github/CICD.md) - CI/CD pipelines & deployment
+- [DOCKER.md](DOCKER.md) - Docker for local development
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - AI agent guidelines
 - [.env.example](.env.example) - Environment configuration template
 

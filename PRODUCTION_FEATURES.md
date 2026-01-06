@@ -2,11 +2,86 @@
 
 ## ✅ Completed Production Features
 
-This document summarizes all production-critical features successfully implemented on **December 2024**.
+This document summarizes all production-critical features successfully implemented as of **January 2026**.
 
 ---
 
-## 1. Rate Limiting & Abuse Control ✅
+## 1. Subscription & Quota System ✅
+
+### Implementation
+- **Free plan:** Limited chat (100/month), unlimited calendar
+- **Premium plan:** Unlimited all features including voice calls
+- **Feature gates:** Middleware blocks access to premium features for free users
+- **Quota tracking:** Daily/weekly/monthly usage tracking per feature
+- **Automatic reset:** Period-based quota reset
+
+### Technology
+- PostgreSQL tables: `plans`, `features`, `plan_features`, `subscriptions`, `feature_usage`
+- Middleware-based feature gates
+- Concurrent-safe quota tracking
+
+### Files
+- `internal/subscription/manager.go` - Core subscription logic (TDD: 97.2%)
+- `internal/api/middleware/feature_gate.go` - Feature gate middleware
+- `internal/api/subscription.go` - Subscription API handlers
+- `migrations/001_complete_schema.up.sql` - Database schema
+
+### Configuration
+```go
+// Feature gate middleware
+calendar.Use(middleware.RequireFeature(subMgr, "calendar"))
+voice.Use(middleware.RequireFeature(subMgr, "voice_calls"))
+
+// Quota check
+hasAccess := subMgr.CheckQuota(ctx, userID, "chat")
+if !hasAccess {
+    return ErrQuotaExceeded
+}
+```
+
+### Features Protected
+- Chat messages (free: 100/month, premium: unlimited)
+- Voice calls (premium only)
+- Calendar reminders (unlimited for all)
+- Savings tracker (unlimited for all)
+
+---
+
+## 2. Twilio Voice Integration ✅
+
+### Implementation
+- **Premium feature:** Phone call access to AI assistant
+- **Speech-to-text:** Twilio transcribes user speech
+- **Text-to-speech:** AWS Polly voices for responses
+- **Session management:** Per-call conversation state
+- **Multilingual:** Auto-detects user language preference
+
+### Technology
+- Twilio Voice API
+- AWS Polly via Twilio
+- TwiML response generation
+- Webhook-based architecture
+
+### Files
+- `pkg/twilio/voice.go` - TwiML builder, webhook validation (TDD: 100%)
+- `internal/api/voice.go` - Voice webhook handlers
+- `VOICE.md` - Complete setup documentation
+
+### Endpoints
+- `POST /api/voice/incoming` - Initial call webhook
+- `POST /api/voice/gather` - Speech recognition callback
+- `POST /api/voice/status` - Call status updates
+
+### Supported Languages
+- English (Polly.Joanna)
+- Spanish (Polly.Lupe)
+- French (Polly.Celine)
+- Portuguese (Polly.Vitoria)
+- German (Polly.Vicki)
+
+---
+
+## 3. Rate Limiting & Abuse Control ✅
 
 ### Implementation
 - **Per-IP rate limiting:** 100 req/min (burst 200)
@@ -41,10 +116,12 @@ wsLimiter := middleware.NewWebSocketLimiter(10, time.Minute)
 - Credential stuffing attacks
 - WebSocket connection abuse
 - Rapid fact extraction abuse
+- Premium feature bypass attempts
+- Quota exhaustion attacks
 
 ---
 
-## 2. LLM Failure Handling ✅
+## 4. LLM Failure Handling ✅
 
 ### Implementation
 - **Context timeout:** 30 seconds per AI call

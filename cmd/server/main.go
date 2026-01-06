@@ -201,13 +201,34 @@ func main() {
 		subscriptionGroup.GET("/quota/:feature", subscriptionHandler.GetMyQuota)
 	}
 
+	// Initialize admin handler
+	adminHandler := api.NewAdminHandler(database, langMgr)
+
 	// Admin routes (protected + admin only)
 	adminGroup := router.Group("/api/admin")
 	adminGroup.Use(middleware.JWTAuth(jwtSecret))
-	// TODO: Add admin role check middleware
+	adminGroup.Use(middleware.AdminOnly()) // Enforce admin role
 	{
-		// Plan management
+		// Plan management (CRUD)
 		adminGroup.GET("/plans", subscriptionHandler.ListAllPlans)
+		adminGroup.POST("/plans", adminHandler.CreatePlan)
+		adminGroup.PUT("/plans/:planId", adminHandler.UpdatePlan)
+		adminGroup.DELETE("/plans/:planId", adminHandler.DeletePlan)
+		adminGroup.GET("/plans/:planId/features", adminHandler.GetPlanFeatures)
+		adminGroup.POST("/plans/:planId/features/:featureId", adminHandler.AssignFeatureToPlan)
+		adminGroup.DELETE("/plans/:planId/features/:featureId", adminHandler.RemoveFeatureFromPlan)
+
+		// Feature management (CRUD)
+		adminGroup.GET("/features", adminHandler.ListFeatures)
+		adminGroup.POST("/features", adminHandler.CreateFeature)
+		adminGroup.PUT("/features/:featureId", adminHandler.UpdateFeature)
+		adminGroup.DELETE("/features/:featureId", adminHandler.DeleteFeature)
+
+		// Language management (CRUD)
+		adminGroup.GET("/languages", adminHandler.ListLanguages)
+		adminGroup.POST("/languages", adminHandler.CreateLanguage)
+		adminGroup.PUT("/languages/:code", adminHandler.UpdateLanguage)
+		adminGroup.DELETE("/languages/:code", adminHandler.DeleteLanguage)
 
 		// User subscription management
 		adminGroup.GET("/users/:userId/subscription", subscriptionHandler.GetUserSubscription)
@@ -218,8 +239,13 @@ func main() {
 		adminGroup.POST("/users/:userId/quota/:feature/reset", subscriptionHandler.ResetUserQuota)
 		adminGroup.GET("/quota/stats", subscriptionHandler.GetQuotaStats)
 
-		// Feature grants
+		// Feature grants to users
 		adminGroup.POST("/users/:userId/features", subscriptionHandler.GrantFeature)
+
+		// Analytics
+		adminGroup.GET("/analytics/topics", adminHandler.GetChatAnalytics)
+		adminGroup.GET("/analytics/users", adminHandler.GetUserStats)
+		adminGroup.GET("/analytics/calls", adminHandler.GetCallHistory)
 	}
 
 	// WebSocket chat route (protected via query param/header)

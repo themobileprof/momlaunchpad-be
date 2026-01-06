@@ -7,7 +7,9 @@ All components have been successfully implemented following Test-Driven Developm
 ## Architecture Overview
 
 ```
-User Message
+User Input (WebSocket or Voice Call)
+    ↓
+Feature Gate & Quota Check
     ↓
 Intent Classifier (Rule-based, deterministic)
     ↓
@@ -15,16 +17,17 @@ Intent Classifier (Rule-based, deterministic)
     │
     └─ Pregnancy/Symptom Question
         ↓
-    Load Memory (Short-term + Long-term facts)
+    Load Memory (Short-term + Long-term facts) [Parallel]
         ↓
     Build Super-Prompt (Context-aware, language-specific)
         ↓
     DeepSeek API (Streaming response)
         ↓
-    ├─ Stream chunks to WebSocket
+    ├─ Stream chunks to WebSocket/TwiML Voice
     ├─ Save message to DB
     ├─ Extract facts (AI-assisted, backend-approved)
-    └─ Suggest calendar reminder (if applicable)
+    ├─ Suggest calendar reminder (if applicable)
+    └─ Increment quota usage
 ```
 
 ## Implementation Statistics
@@ -47,8 +50,11 @@ Intent Classifier (Rule-based, deterministic)
 | Prompt Builder | ✅ | 89.1% | 3 | 2 |
 | Memory Manager | ✅ | 85.5% | 10 | 2 |
 | DeepSeek Client | ✅ | 29.9% | 4 | 4 |
-| Database Layer | ✅ | N/A | 0 | 2 |
-| API Handlers | ✅ | N/A | 0 | 3 |
+| Twilio Voice | ✅ | 100% | 6 | 2 |
+| Subscription System | ✅ | 97.2% | 15 | 2 |
+| Chat Engine | ✅ | 85.0% | 5 | 2 |
+| Database Layer | ✅ | N/A | 0 | 3 |
+| API Handlers | ✅ | N/A | 0 | 5 |
 | WebSocket Handler | ✅ | N/A | 0 | 1 |
 | Main Server | ✅ | N/A | 0 | 1 |
 
@@ -71,12 +77,29 @@ github.com/lib/pq v1.10.9
 golang.org/x/crypto v0.32.0
 ```
 
+### External Services
+- **DeepSeek API:** AI language model for conversational responses
+- **Twilio Voice:** Phone call handling and speech-to-text/text-to-speech (optional)
+- **AWS Polly:** Natural voice synthesis via Twilio (optional)
+
 ## Key Design Principles
 
 1. **Backend is the brain, AI is a dependency**
    - All business logic lives in backend
    - DeepSeek is just an API call
    - Never rely on LLM for deterministic operations
+
+2. **Transport-agnostic architecture**
+   - Single chat engine shared between WebSocket and Voice
+   - Responder interface abstracts transport layer
+   - Easy to add new transports (SMS, WhatsApp, etc.)
+
+3. **Performance optimized**
+   - Pre-compiled regex patterns in classifier
+   - Parallel DB fetches for memory and facts
+   - Optimized connection pooling (50 max, 25 idle)
+   - Fine-grained locking to reduce contention
+   - HTTP/2 with connection reuse for DeepSeek API
 
 2. **Determinism before intelligence**
    - Rule-based classifier runs first (no AI)
