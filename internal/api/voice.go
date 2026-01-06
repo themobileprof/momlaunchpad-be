@@ -54,8 +54,8 @@ func (h *VoiceHandler) HandleIncoming(c *gin.Context) {
 
 	// Parse incoming call parameters
 	callParams := twilio.ParseIncomingCall(c.Request.Form)
-	
-	log.Printf("Incoming call: CallSid=%s, From=%s, To=%s", 
+
+	log.Printf("Incoming call: CallSid=%s, From=%s, To=%s",
 		callParams.CallSid, callParams.From, callParams.To)
 
 	// Look up user by phone number
@@ -116,7 +116,7 @@ func (h *VoiceHandler) HandleGather(c *gin.Context) {
 	// Parse gather parameters
 	gatherParams := twilio.ParseGather(c.Request.Form)
 	callSid := c.Query("callSid")
-	
+
 	if callSid == "" {
 		callSid = gatherParams.CallSid
 	}

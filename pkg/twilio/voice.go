@@ -12,8 +12,8 @@ import (
 
 // VoiceClient handles Twilio Voice operations
 type VoiceClient struct {
-	accountSID string
-	authToken  string
+	accountSID  string
+	authToken   string
 	phoneNumber string
 }
 
@@ -37,25 +37,25 @@ func NewVoiceClient(config VoiceConfig) *VoiceClient {
 func (c *VoiceClient) ValidateRequest(url string, params map[string]string, signature string) bool {
 	// Build data string as per Twilio's validation algorithm
 	data := url
-	
+
 	// Sort keys alphabetically
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	// Append key-value pairs
 	for _, k := range keys {
 		data += k + params[k]
 	}
-	
+
 	// Compute HMAC-SHA1
 	mac := hmac.New(sha1.New, []byte(c.authToken))
 	mac.Write([]byte(data))
 	expectedMAC := mac.Sum(nil)
 	expectedSignature := base64.StdEncoding.EncodeToString(expectedMAC)
-	
+
 	return hmac.Equal([]byte(signature), []byte(expectedSignature))
 }
 
@@ -80,8 +80,8 @@ func (t *TwiMLResponse) Say(text, voice, language string) *TwiMLResponse {
 	if language == "" {
 		language = "en-US"
 	}
-	
-	t.builder.WriteString(fmt.Sprintf(`<Say voice="%s" language="%s">%s</Say>`, 
+
+	t.builder.WriteString(fmt.Sprintf(`<Say voice="%s" language="%s">%s</Say>`,
 		voice, language, escapeXML(text)))
 	return t
 }
@@ -97,7 +97,7 @@ func (t *TwiMLResponse) Gather(action, input, language string, timeout int) *Twi
 	if timeout == 0 {
 		timeout = 5
 	}
-	
+
 	t.builder.WriteString(fmt.Sprintf(
 		`<Gather action="%s" input="%s" language="%s" timeout="%d" speechTimeout="auto">`,
 		action, input, language, timeout))
@@ -163,10 +163,10 @@ type IncomingCallParams struct {
 
 // GatherParams represents parameters from a Gather callback
 type GatherParams struct {
-	CallSid        string
-	AccountSid     string
-	SpeechResult   string
-	Confidence     string
+	CallSid              string
+	AccountSid           string
+	SpeechResult         string
+	Confidence           string
 	UnstableSpeechResult string
 }
 
@@ -213,7 +213,7 @@ func GetVoiceForLanguage(language string) string {
 		"pt": "Polly.Vitoria",
 		"de": "Polly.Vicki",
 	}
-	
+
 	if voice, ok := voices[language]; ok {
 		return voice
 	}
@@ -229,7 +229,7 @@ func GetTwilioLanguageCode(language string) string {
 		"pt": "pt-BR",
 		"de": "de-DE",
 	}
-	
+
 	if code, ok := codes[language]; ok {
 		return code
 	}

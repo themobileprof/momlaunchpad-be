@@ -229,9 +229,9 @@ func main() {
 	if voiceHandler != nil {
 		voice := router.Group("/api/voice")
 		{
-			voice.POST("/incoming", voiceHandler.HandleIncoming)   // Initial call webhook
-			voice.POST("/gather", voiceHandler.HandleGather)       // Speech recognition callback
-			voice.POST("/status", voiceHandler.HandleStatus)       // Call status updates
+			voice.POST("/incoming", voiceHandler.HandleIncoming) // Initial call webhook
+			voice.POST("/gather", voiceHandler.HandleGather)     // Speech recognition callback
+			voice.POST("/status", voiceHandler.HandleStatus)     // Call status updates
 		}
 		log.Println("✅ Voice routes registered")
 	}
