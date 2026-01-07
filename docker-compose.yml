@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+
 services:
   # Backend API (connects to host PostgreSQL)
   backend:
@@ -12,6 +14,17 @@ services:
       - "${PORT:-8080}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # DNS configuration for external API access
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s

@@ -134,6 +134,9 @@ func main() {
 	// Setup Gin router
 	router := gin.Default()
 
+	// Apply security headers first
+	router.Use(middleware.SecurityHeaders())
+
 	// Apply CORS middleware
 	router.Use(middleware.CORS())
 
@@ -263,14 +266,17 @@ func main() {
 	}
 
 	// Create HTTP server
+	// Bind to 0.0.0.0 to accept connections from all network interfaces
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    "0.0.0.0:" + port,
 		Handler: router,
 	}
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("🚀 Server starting on http://localhost:%s", port)
+		log.Printf("🚀 Server starting on 0.0.0.0:%s", port)
+		log.Printf("📡 Accessible at http://localhost:%s (local)", port)
+		log.Printf("📡 Accessible at http://<your-ip>:%s (network)", port)
 		log.Printf("📝 API endpoints:")
 		log.Printf("   POST   /api/auth/register")
 		log.Printf("   POST   /api/auth/login")
