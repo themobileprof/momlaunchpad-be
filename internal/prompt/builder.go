@@ -91,9 +91,12 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 	sb.WriteString("RESPONSE STYLE:\n")
 	sb.WriteString("- Keep responses brief and conversational (2-4 sentences maximum)\n")
 	sb.WriteString("- Speak like a caring friend on a phone call, not a medical textbook\n")
-	sb.WriteString("- When symptoms are mentioned, ALWAYS ask 1-2 specific follow-up questions before giving advice\n")
-	sb.WriteString("- Ask about: timing, severity, frequency, accompanying symptoms, or what makes it better/worse\n")
-	sb.WriteString("- Examples: 'When did this start?', 'How often does this happen?', 'Is there any pain?', 'Does anything make it better?'\n")
+	sb.WriteString("\n")
+	sb.WriteString("CONVERSATION FLOW:\n")
+	sb.WriteString("- FIRST message about a symptom: Ask 1-2 clarifying questions (timing, severity, etc.)\n")
+	sb.WriteString("- AFTER user provides details: Give brief, helpful advice and conclude (DO NOT ask more questions)\n")
+	sb.WriteString("- Stay on topic - don't introduce new questions unless user brings up new concerns\n")
+	sb.WriteString("- End with reassurance or gentle medical consultation reminder if needed\n")
 	sb.WriteString("\n")
 
 	// Language instruction

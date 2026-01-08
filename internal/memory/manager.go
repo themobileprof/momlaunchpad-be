@@ -27,18 +27,25 @@ type UserMemory struct {
 	mu        sync.RWMutex
 }
 
+// DBInterface defines database operations needed by memory manager
+type DBInterface interface {
+	GetRecentMessages(userID string, limit int) ([]Message, error)
+}
+
 // MemoryManager manages memory for all users
 type MemoryManager struct {
 	users               map[string]*UserMemory
 	shortTermMemorySize int
+	db                  DBInterface
 	mu                  sync.RWMutex
 }
 
 // NewMemoryManager creates a new memory manager
-func NewMemoryManager(shortTermMemorySize int) *MemoryManager {
+func NewMemoryManager(shortTermMemorySize int, db DBInterface) *MemoryManager {
 	return &MemoryManager{
 		users:               make(map[string]*UserMemory),
 		shortTermMemorySize: shortTermMemorySize,
+		db:                  db,
 	}
 }
 
@@ -81,13 +88,30 @@ func (m *MemoryManager) AddMessage(userID string, msg Message) {
 
 // GetShortTermMemory retrieves the user's short-term memory
 func (m *MemoryManager) GetShortTermMemory(userID string) []Message {
-	m.mu.RLock()
+	m.mu.Lock()
 	userMem, exists := m.users[userID]
-	m.mu.RUnlock()
 
 	if !exists {
+		// First time accessing this user - load from database
+		if m.db != nil {
+			if dbMessages, err := m.db.GetRecentMessages(userID, m.shortTermMemorySize); err == nil && len(dbMessages) > 0 {
+				userMem = &UserMemory{
+					ShortTerm: dbMessages,
+					Facts:     make(map[string]UserFact),
+				}
+				m.users[userID] = userMem
+				m.mu.Unlock()
+
+				// Return a copy
+				messages := make([]Message, len(dbMessages))
+				copy(messages, dbMessages)
+				return messages
+			}
+		}
+		m.mu.Unlock()
 		return []Message{}
 	}
+	m.mu.Unlock()
 
 	userMem.mu.RLock()
 	defer userMem.mu.RUnlock()

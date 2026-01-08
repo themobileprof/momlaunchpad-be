@@ -163,6 +163,8 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 
 	sanitizedContent := privacy.SanitizeForAPI(req.Message)
 
+	log.Printf("Building prompt for user=%s, intent=%s", req.UserID, result.Intent)
+
 	promptReq := prompt.PromptRequest{
 		UserID:          req.UserID,
 		UserMessage:     sanitizedContent,
@@ -172,6 +174,8 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		Facts:           convertDBFactsToMemoryFacts(facts),
 	}
 	messages := e.promptBuilder.BuildPrompt(promptReq)
+
+	log.Printf("Calling DeepSeek API with %d messages, maxTokens=%d", len(messages), 200)
 
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, e.aiTimeout)
 	defer cancel()
@@ -185,12 +189,15 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 	}
 
 	var fullResponse strings.Builder
+	log.Printf("Starting AI stream for user=%s", req.UserID)
 	err := e.circuitBreaker.Call(func() error {
 		chunks, err := e.deepseekClient.StreamChatCompletion(ctxWithTimeout, deepseekReq)
 		if err != nil {
+			log.Printf("DeepSeek API error: %v", err)
 			return err
 		}
 
+		chunkCount := 0
 		for chunk := range chunks {
 			select {
 			case <-ctxWithTimeout.Done():
@@ -205,12 +212,15 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 
 			chunkContent := chunk.Choices[0].Delta.Content
 			if chunkContent != "" {
+				chunkCount++
 				fullResponse.WriteString(chunkContent)
 				if err := req.Responder.SendMessage(chunkContent); err != nil {
+					log.Printf("Error sending chunk: %v", err)
 					return err
 				}
 			}
 		}
+		log.Printf("AI stream completed: %d chunks, %d bytes", chunkCount, fullResponse.Len())
 		return nil
 	})
 

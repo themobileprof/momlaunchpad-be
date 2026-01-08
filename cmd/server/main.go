@@ -62,7 +62,8 @@ func main() {
 
 	// Initialize components
 	cls := classifier.NewClassifier()
-	memMgr := memory.NewMemoryManager(10) // Keep last 10 messages
+	memAdapter := db.NewMemoryAdapter(database)
+	memMgr := memory.NewMemoryManager(10, memAdapter) // Keep last 10 messages, load from DB
 	deepseekClient := deepseek.NewHTTPClient(deepseek.Config{
 		APIKey: deepseekAPIKey,
 	})

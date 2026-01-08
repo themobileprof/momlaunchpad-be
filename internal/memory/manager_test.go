@@ -6,7 +6,7 @@ import (
 )
 
 func TestMemoryManager_AddMessage(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil) // nil DB for testing
 
 	msg := Message{
 		Role:      "user",
@@ -27,7 +27,7 @@ func TestMemoryManager_AddMessage(t *testing.T) {
 }
 
 func TestMemoryManager_ShortTermMemoryLimit(t *testing.T) {
-	manager := NewMemoryManager(3)
+	manager := NewMemoryManager(3, nil)
 
 	messages := []Message{
 		{Role: "user", Content: "Message 1", Timestamp: time.Now()},
@@ -61,7 +61,7 @@ func TestMemoryManager_ShortTermMemoryLimit(t *testing.T) {
 }
 
 func TestMemoryManager_AddFact(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	fact := UserFact{
 		Key:        "pregnancy_week",
@@ -83,7 +83,7 @@ func TestMemoryManager_AddFact(t *testing.T) {
 }
 
 func TestMemoryManager_UpdateFact(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	fact1 := UserFact{
 		Key:        "pregnancy_week",
@@ -116,7 +116,7 @@ func TestMemoryManager_UpdateFact(t *testing.T) {
 }
 
 func TestMemoryManager_UpdateFactLowerConfidence(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	fact1 := UserFact{
 		Key:        "diet",
@@ -145,7 +145,7 @@ func TestMemoryManager_UpdateFactLowerConfidence(t *testing.T) {
 }
 
 func TestMemoryManager_GetFactByKey(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	facts := []UserFact{
 		{Key: "pregnancy_week", Value: "14", Confidence: 0.9, UpdatedAt: time.Now()},
@@ -168,7 +168,7 @@ func TestMemoryManager_GetFactByKey(t *testing.T) {
 }
 
 func TestMemoryManager_GetFactByKeyNotFound(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	_, exists := manager.GetFactByKey("user123", "nonexistent")
 	if exists {
@@ -177,7 +177,7 @@ func TestMemoryManager_GetFactByKeyNotFound(t *testing.T) {
 }
 
 func TestMemoryManager_ClearShortTermMemory(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	manager.AddMessage("user123", Message{Role: "user", Content: "Hello", Timestamp: time.Now()})
 	manager.AddMessage("user123", Message{Role: "assistant", Content: "Hi", Timestamp: time.Now()})
@@ -191,7 +191,7 @@ func TestMemoryManager_ClearShortTermMemory(t *testing.T) {
 }
 
 func TestMemoryManager_MultipleUsers(t *testing.T) {
-	manager := NewMemoryManager(5)
+	manager := NewMemoryManager(5, nil)
 
 	manager.AddMessage("user1", Message{Role: "user", Content: "User 1 message", Timestamp: time.Now()})
 	manager.AddFact("user1", UserFact{Key: "name", Value: "Alice", Confidence: 0.9, UpdatedAt: time.Now()})
@@ -221,7 +221,7 @@ func TestMemoryManager_MultipleUsers(t *testing.T) {
 }
 
 func TestMemoryManager_ConcurrentAccess(t *testing.T) {
-	manager := NewMemoryManager(10)
+	manager := NewMemoryManager(10, nil)
 
 	done := make(chan bool, 2)
 
