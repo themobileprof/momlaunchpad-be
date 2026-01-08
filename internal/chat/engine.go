@@ -180,7 +180,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		Model:       "deepseek-chat",
 		Messages:    messages,
 		Temperature: 0.7,
-		MaxTokens:   1000,
+		MaxTokens:   200, // Limit to ~150 words for voice-friendly, concise responses
 		Stream:      true,
 	}
 

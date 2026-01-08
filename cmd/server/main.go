@@ -140,8 +140,8 @@ func main() {
 	// Apply CORS middleware
 	router.Use(middleware.CORS())
 
-	// Apply global rate limiting (100 req/sec per IP, burst of 200)
-	router.Use(middleware.PerIP(100.0/60.0, 200)) // ~1.67 req/sec = 100/min
+	// Apply global rate limiting - generous for development/mobile apps
+	router.Use(middleware.PerIP(10.0, 50)) // 10 req/sec per IP, burst of 50
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
