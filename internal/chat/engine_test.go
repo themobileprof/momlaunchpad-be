@@ -105,6 +105,18 @@ func (m *mockDB) SaveOrUpdateFact(ctx context.Context, userID, key, value string
 	m.facts = append(m.facts, key+":"+value)
 	return &db.UserFact{}, nil
 }
+func (m *mockDB) SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error) {
+	return "mock-symptom-id", nil
+}
+func (m *mockDB) GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error) {
+	return []map[string]interface{}{}, nil
+}
+func (m *mockDB) GetSystemSetting(ctx context.Context, key string) (*db.SystemSetting, error) {
+	if key == "ai_name" {
+		return &db.SystemSetting{Key: "ai_name", Value: "MomBot"}, nil
+	}
+	return nil, db.ErrNotFound
+}
 
 type mockResponder struct {
 	messages []string

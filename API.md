@@ -1349,6 +1349,197 @@ Authorization: Bearer <admin_token>
 
 ---
 
+### Symptom Tracking
+
+Symptom tracking automatically extracts and stores symptom information from chat conversations. Users and doctors can query symptom history for better care management.
+
+#### GET /api/symptoms/history
+Get full symptom history with optional filters (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+- `limit` (optional): Maximum number of results (default: 50, max: 200)
+- `type` (optional): Filter by symptom type (e.g., "swelling", "nausea", "headache")
+
+**Example:**
+```
+GET /api/symptoms/history?limit=20&type=headache
+```
+
+**Response:**
+```json
+{
+  "symptoms": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "symptom_type": "swelling",
+      "description": "My feet are really swollen and puffy",
+      "severity": "moderate",
+      "frequency": "daily",
+      "onset_time": "3 days ago",
+      "associated_symptoms": ["back_pain"],
+      "is_resolved": false,
+      "reported_at": "2026-01-08T10:30:00Z",
+      "resolved_at": null
+    },
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440001",
+      "symptom_type": "nausea",
+      "description": "Feeling nauseous in the mornings",
+      "severity": "mild",
+      "frequency": "daily",
+      "onset_time": "yesterday",
+      "associated_symptoms": [],
+      "is_resolved": true,
+      "reported_at": "2026-01-07T08:15:00Z",
+      "resolved_at": "2026-01-08T09:00:00Z"
+    }
+  ],
+  "count": 2
+}
+```
+
+**Symptom Types:**
+- `swelling` - Swollen feet, ankles, hands, face
+- `nausea` - Morning sickness, nausea
+- `headache` - Headaches, migraines
+- `back_pain` - Back pain, lower back pain
+- `cramping` - Cramps, cramping
+- `vision_changes` - Blurry vision, vision changes
+- `dizziness` - Dizzy, lightheaded
+- `fatigue` - Tired, exhausted
+- `insomnia` - Can't sleep, insomnia
+- `heartburn` - Heartburn, acid reflux
+- `vomiting` - Vomiting, throwing up
+- `constipation` - Constipation
+- `bleeding` - Bleeding, spotting
+- `contractions` - Contractions, tightening
+- `breast_changes` - Breast tenderness, nipple changes
+- `mood_changes` - Mood swings, emotional changes
+- `shortness_breath` - Shortness of breath
+- `frequent_urination` - Frequent urination
+
+**Severity Levels:**
+- `mild` - Minor discomfort
+- `moderate` - Noticeable discomfort (default)
+- `severe` - Significant pain/concern
+
+**Frequency Options:**
+- `once` - Single occurrence
+- `occasional` - Sometimes (default)
+- `frequent` - Often, multiple times
+- `daily` - Every day
+- `constant` - All the time, continuous
+
+---
+
+#### GET /api/symptoms/recent
+Get recent symptoms for dashboard overview (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+- `limit` (optional): Number of recent symptoms (default: 10, max: 50)
+
+**Example:**
+```
+GET /api/symptoms/recent?limit=5
+```
+
+**Response:**
+```json
+{
+  "symptoms": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "symptom_type": "swelling",
+      "description": "My feet are really swollen",
+      "severity": "moderate",
+      "frequency": "daily",
+      "onset_time": "3 days ago",
+      "associated_symptoms": ["back_pain"],
+      "is_resolved": false,
+      "reported_at": "2026-01-08T10:30:00Z",
+      "resolved_at": null
+    }
+  ]
+}
+```
+
+---
+
+#### GET /api/symptoms/stats
+Get symptom statistics and summary (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "total_symptoms": 25,
+  "ongoing": 8,
+  "resolved": 17,
+  "by_type": {
+    "swelling": 5,
+    "nausea": 8,
+    "headache": 3,
+    "back_pain": 9
+  },
+  "by_severity": {
+    "mild": 10,
+    "moderate": 12,
+    "severe": 3
+  }
+}
+```
+
+**Use Cases:**
+- Dashboard summary widget
+- Doctor consultation preparation
+- Health trend analysis
+
+---
+
+#### PUT /api/symptoms/:id/resolve
+Mark a symptom as resolved (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**URL Parameters:**
+- `id` (required): Symptom UUID
+
+**Example:**
+```
+PUT /api/symptoms/550e8400-e29b-41d4-a716-446655440000/resolve
+```
+
+**Response:**
+```json
+{
+  "message": "Symptom marked as resolved"
+}
+```
+
+**Notes:**
+- Sets `is_resolved` to `true`
+- Sets `resolved_at` to current timestamp
+- Cannot resolve symptoms belonging to other users
+
+---
+
 ## Error Responses
 
 All endpoints may return error responses:
@@ -1403,3 +1594,8 @@ All endpoints may return error responses:
 - Voice calls are a premium feature requiring Twilio configuration
 - Voice responses use AWS Polly voices for natural speech
 - Subscription quotas are tracked per feature per period (daily/weekly/monthly)
+- Symptoms are automatically extracted from chat conversations when users report health concerns
+- Symptom extraction uses pattern matching for 18+ common pregnancy symptoms
+- Recent symptoms (last 5) are included in AI prompts for context-aware responses
+- AI checks for dangerous symptom patterns and recommends urgent care when needed
+- Symptom data is highly sensitive - never shared without explicit user consent

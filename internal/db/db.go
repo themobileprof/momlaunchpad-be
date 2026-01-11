@@ -151,3 +151,11 @@ type SavingsEntry struct {
 	EntryDate   time.Time
 	CreatedAt   time.Time
 }
+
+// SystemSetting represents a system-wide configuration setting
+type SystemSetting struct {
+	Key         string
+	Value       string
+	Description *string
+	UpdatedAt   time.Time
+}

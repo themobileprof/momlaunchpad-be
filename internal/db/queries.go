@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 var (
@@ -151,6 +153,167 @@ func (db *DB) SaveOrUpdateFact(ctx context.Context, userID, key, value string, c
 	return fact, nil
 }
 
+// SaveSymptom saves a new symptom record
+func (db *DB) SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error) {
+	query := `
+		INSERT INTO symptoms (user_id, symptom_type, description, severity, frequency, onset_time, associated_symptoms)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id
+	`
+
+	var symptomID string
+	err := db.QueryRowContext(ctx, query, userID, symptomType, description, severity, frequency, onsetTime, pq.Array(associatedSymptoms)).Scan(&symptomID)
+	if err != nil {
+		return "", fmt.Errorf("failed to save symptom: %w", err)
+	}
+
+	return symptomID, nil
+}
+
+// GetRecentSymptoms retrieves recent symptoms for a user
+func (db *DB) GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT id, symptom_type, description, severity, frequency, onset_time, 
+		       associated_symptoms, is_resolved, reported_at, resolved_at
+		FROM symptoms
+		WHERE user_id = $1
+		ORDER BY reported_at DESC
+		LIMIT $2
+	`
+
+	rows, err := db.QueryContext(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent symptoms: %w", err)
+	}
+	defer rows.Close()
+
+	symptoms := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			id                 string
+			symptomType        string
+			description        string
+			severity           string
+			frequency          string
+			onsetTime          string
+			associatedSymptoms []string
+			isResolved         bool
+			reportedAt         time.Time
+			resolvedAt         *time.Time
+		)
+
+		err := rows.Scan(&id, &symptomType, &description, &severity, &frequency, &onsetTime,
+			&associatedSymptoms, &isResolved, &reportedAt, &resolvedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan symptom: %w", err)
+		}
+
+		symptom := map[string]interface{}{
+			"id":                  id,
+			"symptom_type":        symptomType,
+			"description":         description,
+			"severity":            severity,
+			"frequency":           frequency,
+			"onset_time":          onsetTime,
+			"associated_symptoms": associatedSymptoms,
+			"is_resolved":         isResolved,
+			"reported_at":         reportedAt,
+			"resolved_at":         resolvedAt,
+		}
+		symptoms = append(symptoms, symptom)
+	}
+
+	return symptoms, nil
+}
+
+// GetSymptomHistory retrieves all symptoms for a user with optional filters
+func (db *DB) GetSymptomHistory(ctx context.Context, userID string, symptomType string, limit int) ([]map[string]interface{}, error) {
+	var query string
+	var args []interface{}
+
+	if symptomType != "" {
+		query = `
+			SELECT id, symptom_type, description, severity, frequency, onset_time, 
+			       associated_symptoms, is_resolved, reported_at, resolved_at
+			FROM symptoms
+			WHERE user_id = $1 AND symptom_type = $2
+			ORDER BY reported_at DESC
+			LIMIT $3
+		`
+		args = []interface{}{userID, symptomType, limit}
+	} else {
+		query = `
+			SELECT id, symptom_type, description, severity, frequency, onset_time, 
+			       associated_symptoms, is_resolved, reported_at, resolved_at
+			FROM symptoms
+			WHERE user_id = $1
+			ORDER BY reported_at DESC
+			LIMIT $2
+		`
+		args = []interface{}{userID, limit}
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symptom history: %w", err)
+	}
+	defer rows.Close()
+
+	symptoms := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			id                 string
+			symptomType        string
+			description        string
+			severity           string
+			frequency          string
+			onsetTime          string
+			associatedSymptoms []string
+			isResolved         bool
+			reportedAt         time.Time
+			resolvedAt         *time.Time
+		)
+
+		err := rows.Scan(&id, &symptomType, &description, &severity, &frequency, &onsetTime,
+			pq.Array(&associatedSymptoms), &isResolved, &reportedAt, &resolvedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan symptom: %w", err)
+		}
+
+		symptom := map[string]interface{}{
+			"id":                  id,
+			"symptom_type":        symptomType,
+			"description":         description,
+			"severity":            severity,
+			"frequency":           frequency,
+			"onset_time":          onsetTime,
+			"associated_symptoms": associatedSymptoms,
+			"is_resolved":         isResolved,
+			"reported_at":         reportedAt,
+			"resolved_at":         resolvedAt,
+		}
+		symptoms = append(symptoms, symptom)
+	}
+
+	return symptoms, nil
+}
+
+// MarkSymptomResolved marks a symptom as resolved
+func (db *DB) MarkSymptomResolved(ctx context.Context, symptomID, userID string) error {
+	query := `
+		UPDATE symptoms 
+		SET is_resolved = true, resolved_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND user_id = $2
+	`
+
+	_, err := db.ExecContext(ctx, query, symptomID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to mark symptom resolved: %w", err)
+	}
+
+	return nil
+}
+
 // GetUserFacts retrieves all facts for a user
 func (db *DB) GetUserFacts(ctx context.Context, userID string) ([]UserFact, error) {
 	query := `
@@ -177,6 +340,90 @@ func (db *DB) GetUserFacts(ctx context.Context, userID string) ([]UserFact, erro
 	}
 
 	return facts, nil
+}
+
+// GetSystemSetting retrieves a system setting by key
+func (db *DB) GetSystemSetting(ctx context.Context, key string) (*SystemSetting, error) {
+	query := `
+		SELECT key, value, description, updated_at
+		FROM system_settings
+		WHERE key = $1
+	`
+
+	var setting SystemSetting
+	var description sql.NullString
+	err := db.QueryRowContext(ctx, query, key).Scan(
+		&setting.Key, &setting.Value, &description, &setting.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("setting not found: %s", key)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get setting: %w", err)
+	}
+
+	if description.Valid {
+		setting.Description = &description.String
+	}
+
+	return &setting, nil
+}
+
+// UpdateSystemSetting updates a system setting
+func (db *DB) UpdateSystemSetting(ctx context.Context, key, value string) error {
+	query := `
+		UPDATE system_settings 
+		SET value = $2
+		WHERE key = $1
+	`
+
+	result, err := db.ExecContext(ctx, query, key, value)
+	if err != nil {
+		return fmt.Errorf("failed to update setting: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("setting not found: %s", key)
+	}
+
+	return nil
+}
+
+// GetAllSystemSettings retrieves all system settings
+func (db *DB) GetAllSystemSettings(ctx context.Context) ([]SystemSetting, error) {
+	query := `
+		SELECT key, value, description, updated_at
+		FROM system_settings
+		ORDER BY key
+	`
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get settings: %w", err)
+	}
+	defer rows.Close()
+
+	settings := make([]SystemSetting, 0)
+	for rows.Next() {
+		var setting SystemSetting
+		var description sql.NullString
+		if err := rows.Scan(&setting.Key, &setting.Value, &description, &setting.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan setting: %w", err)
+		}
+
+		if description.Valid {
+			setting.Description = &description.String
+		}
+
+		settings = append(settings, setting)
+	}
+
+	return settings, nil
 }
 
 // CreateReminder creates a new reminder

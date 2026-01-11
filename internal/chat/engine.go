@@ -12,12 +12,14 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
 	"github.com/themobileprof/momlaunchpad-be/internal/circuitbreaker"
 	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
+	"github.com/themobileprof/momlaunchpad-be/internal/conversation"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"github.com/themobileprof/momlaunchpad-be/internal/fallback"
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/privacy"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
+	"github.com/themobileprof/momlaunchpad-be/internal/symptoms"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
 
@@ -46,6 +48,8 @@ type Engine struct {
 	calSuggester   CalendarInterface
 	langManager    LanguageInterface
 	db             DBInterface
+	convManager    *conversation.Manager
+	symptomTracker *symptoms.Tracker
 	circuitBreaker *circuitbreaker.CircuitBreaker
 	aiTimeout      time.Duration
 }
@@ -76,7 +80,10 @@ type LanguageInterface interface {
 type DBInterface interface {
 	SaveMessage(ctx context.Context, userID, role, content string) (*db.Message, error)
 	GetUserFacts(ctx context.Context, userID string) ([]db.UserFact, error)
+	SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error)
+	GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error)
 	SaveOrUpdateFact(ctx context.Context, userID, key, value string, confidence float64) (*db.UserFact, error)
+	GetSystemSetting(ctx context.Context, key string) (*db.SystemSetting, error)
 }
 
 // NewEngine creates a new transport-agnostic chat engine
@@ -97,6 +104,8 @@ func NewEngine(
 		calSuggester:   cal,
 		langManager:    lm,
 		db:             database,
+		convManager:    conversation.NewManager(),
+		symptomTracker: symptoms.NewTracker(),
 		circuitBreaker: circuitbreaker.NewCircuitBreaker(5, 5*time.Minute),
 		aiTimeout:      30 * time.Second,
 	}
@@ -127,7 +136,53 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		if err := req.Responder.SendMessage(response); err != nil {
 			return err
 		}
+		// Reset conversation state on small talk
+		e.convManager.Reset(req.UserID)
 		return req.Responder.SendDone()
+	}
+
+	// Get conversation state
+	convState := e.convManager.GetState(req.UserID)
+
+	// Extract and save symptoms if present (for symptom reports or pregnancy questions)
+	if result.Intent == classifier.IntentSymptom || result.Intent == classifier.IntentPregnancyQ {
+		extractedSymptoms := e.symptomTracker.ExtractSymptoms(req.Message)
+		if len(extractedSymptoms) > 0 {
+			log.Printf("Extracted %d symptom(s) from message", len(extractedSymptoms))
+			for _, symptom := range extractedSymptoms {
+				symptomID, err := e.db.SaveSymptom(
+					ctx,
+					req.UserID,
+					symptom.Type,
+					symptom.Description,
+					symptom.Severity,
+					symptom.Frequency,
+					symptom.OnsetTime,
+					symptom.AssociatedSymptoms,
+				)
+				if err != nil {
+					log.Printf("Warning: failed to save symptom: %v", err)
+				} else {
+					log.Printf("Saved symptom: %s (ID: %s)", symptom.Type, symptomID)
+				}
+			}
+		}
+	}
+
+	// Detect primary concern from first substantive message
+	if convState.PrimaryConcern == "" {
+		primaryConcern := extractPrimaryConcern(req.Message)
+		e.convManager.SetPrimaryConcern(req.UserID, primaryConcern)
+		log.Printf("Set primary concern for user %s: %s", req.UserID, primaryConcern)
+	} else {
+		// Track if user mentioned new topics
+		if containsNewSymptom(req.Message, convState.PrimaryConcern) {
+			e.convManager.AddSecondaryTopic(req.UserID, req.Message)
+			log.Printf("Detected secondary topic for user %s", req.UserID)
+		}
+
+		// Increment follow-up count
+		e.convManager.IncrementFollowUp(req.UserID)
 	}
 
 	if shouldSuggest := e.calSuggester.ShouldSuggest(result.Intent, req.Message); shouldSuggest.ShouldSuggest {
@@ -144,34 +199,53 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		return req.Responder.SendDone()
 	}
 
-	// Fetch facts from DB and short-term memory concurrently for speed
+	// Fetch facts, symptoms, AI name, and short-term memory concurrently for speed
 	var (
-		facts         []db.UserFact
-		shortTermMsgs []memory.Message
-		wg            sync.WaitGroup
+		facts          []db.UserFact
+		recentSymptoms []map[string]interface{}
+		shortTermMsgs  []memory.Message
+		aiName         string
+		wg             sync.WaitGroup
 	)
-	wg.Add(2)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		facts, _ = e.db.GetUserFacts(ctx, req.UserID)
 	}()
 	go func() {
 		defer wg.Done()
+		recentSymptoms, _ = e.db.GetRecentSymptoms(ctx, req.UserID, 10) // Last 10 symptoms
+	}()
+	go func() {
+		defer wg.Done()
 		shortTermMsgs = e.memoryManager.GetShortTermMemory(req.UserID)
+	}()
+	go func() {
+		defer wg.Done()
+		// Fetch AI name from system settings
+		setting, err := e.db.GetSystemSetting(ctx, "ai_name")
+		if err == nil && setting != nil {
+			aiName = setting.Value
+		} else {
+			aiName = "MomBot" // Fallback default
+		}
 	}()
 	wg.Wait()
 
 	sanitizedContent := privacy.SanitizeForAPI(req.Message)
 
-	log.Printf("Building prompt for user=%s, intent=%s", req.UserID, result.Intent)
+	log.Printf("Building prompt for user=%s, intent=%s, aiName=%s", req.UserID, result.Intent, aiName)
 
 	promptReq := prompt.PromptRequest{
-		UserID:          req.UserID,
-		UserMessage:     sanitizedContent,
-		Language:        req.Language,
-		IsSmallTalk:     result.Intent == classifier.IntentSmallTalk,
-		ShortTermMemory: shortTermMsgs,
-		Facts:           convertDBFactsToMemoryFacts(facts),
+		UserID:            req.UserID,
+		UserMessage:       sanitizedContent,
+		Language:          req.Language,
+		IsSmallTalk:       result.Intent == classifier.IntentSmallTalk,
+		ShortTermMemory:   shortTermMsgs,
+		Facts:             convertDBFactsToMemoryFacts(facts),
+		RecentSymptoms:    recentSymptoms,
+		ConversationState: convState,
+		AIName:            aiName, // Pass AI name to prompt builder
 	}
 	messages := e.promptBuilder.BuildPrompt(promptReq)
 
@@ -184,43 +258,25 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		Model:       "deepseek-chat",
 		Messages:    messages,
 		Temperature: 0.7,
-		MaxTokens:   200, // Limit to ~150 words for voice-friendly, concise responses
-		Stream:      true,
+		MaxTokens:   200,   // Limit to ~150 words for voice-friendly, concise responses
+		Stream:      false, // Non-streaming for short responses
 	}
 
-	var fullResponse strings.Builder
-	log.Printf("Starting AI stream for user=%s", req.UserID)
+	log.Printf("Calling DeepSeek API for user=%s", req.UserID)
+	var assistantMsg string
 	err := e.circuitBreaker.Call(func() error {
-		chunks, err := e.deepseekClient.StreamChatCompletion(ctxWithTimeout, deepseekReq)
+		response, err := e.deepseekClient.ChatCompletion(ctxWithTimeout, deepseekReq)
 		if err != nil {
 			log.Printf("DeepSeek API error: %v", err)
 			return err
 		}
 
-		chunkCount := 0
-		for chunk := range chunks {
-			select {
-			case <-ctxWithTimeout.Done():
-				return context.DeadlineExceeded
-			default:
-			}
-
-			if len(chunk.Choices) == 0 {
-				log.Printf("Warning: Empty chunk received from DeepSeek")
-				continue
-			}
-
-			chunkContent := chunk.Choices[0].Delta.Content
-			if chunkContent != "" {
-				chunkCount++
-				fullResponse.WriteString(chunkContent)
-				if err := req.Responder.SendMessage(chunkContent); err != nil {
-					log.Printf("Error sending chunk: %v", err)
-					return err
-				}
-			}
+		if len(response.Choices) == 0 {
+			return fmt.Errorf("no response from DeepSeek")
 		}
-		log.Printf("AI stream completed: %d chunks, %d bytes", chunkCount, fullResponse.Len())
+
+		assistantMsg = response.Choices[0].Message.Content
+		log.Printf("AI response received: %d bytes", len(assistantMsg))
 		return nil
 	})
 
@@ -238,7 +294,12 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		return req.Responder.SendDone()
 	}
 
-	assistantMsg := fullResponse.String()
+	// Send the complete response at once
+	if err := req.Responder.SendMessage(assistantMsg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Save assistant message to DB and memory
 	if _, err := e.db.SaveMessage(ctx, req.UserID, "assistant", assistantMsg); err != nil {
 		log.Printf("Failed to save assistant message: %v", err)
 	}
@@ -289,4 +350,59 @@ func (e *Engine) extractAndSaveFacts(ctx context.Context, userID, userMsg, aiMsg
 			}
 		}
 	}
+}
+
+// extractPrimaryConcern extracts the main symptom/concern from message
+func extractPrimaryConcern(message string) string {
+	lower := strings.ToLower(message)
+
+	// Common pregnancy symptoms - return first match
+	symptoms := map[string]string{
+		"swollen":   "swollen feet/ankles",
+		"swell":     "swelling",
+		"nausea":    "nausea/morning sickness",
+		"headache":  "headaches",
+		"back pain": "back pain",
+		"cramp":     "cramping",
+		"blurry":    "vision changes",
+		"vision":    "vision changes",
+		"dizzy":     "dizziness",
+		"tired":     "fatigue",
+		"insomnia":  "sleep issues",
+		"heartburn": "heartburn",
+		"vomit":     "vomiting",
+		"constipa":  "constipation",
+		"bleed":     "bleeding",
+	}
+
+	for keyword, concern := range symptoms {
+		if strings.Contains(lower, keyword) {
+			return concern
+		}
+	}
+
+	// Default: use first few words
+	words := strings.Fields(message)
+	if len(words) > 5 {
+		return strings.Join(words[:5], " ")
+	}
+	return message
+}
+
+// containsNewSymptom checks if message mentions a different symptom
+func containsNewSymptom(message, primaryConcern string) bool {
+	lower := strings.ToLower(message)
+	concernLower := strings.ToLower(primaryConcern)
+
+	// If message contains primary concern keywords, it's not new
+	concernWords := strings.Fields(concernLower)
+	matchCount := 0
+	for _, word := range concernWords {
+		if len(word) > 3 && strings.Contains(lower, word) {
+			matchCount++
+		}
+	}
+
+	// If less than half the concern words match, likely a new topic
+	return matchCount < len(concernWords)/2
 }

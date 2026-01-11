@@ -118,6 +118,7 @@ func main() {
 	calendarHandler := api.NewCalendarHandler(database)
 	savingsHandler := api.NewSavingsHandler(database)
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
+	symptomHandler := api.NewSymptomHandler(database)
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -205,6 +206,16 @@ func main() {
 		subscriptionGroup.GET("/quota/:feature", subscriptionHandler.GetMyQuota)
 	}
 
+	// Symptom tracking routes (protected)
+	symptomGroup := router.Group("/api/symptoms")
+	symptomGroup.Use(middleware.JWTAuth(jwtSecret))
+	{
+		symptomGroup.GET("/history", symptomHandler.GetSymptomHistory)
+		symptomGroup.GET("/recent", symptomHandler.GetRecentSymptoms)
+		symptomGroup.GET("/stats", symptomHandler.GetSymptomStats)
+		symptomGroup.PUT("/:id/resolve", symptomHandler.MarkSymptomResolved)
+	}
+
 	// Initialize admin handler
 	adminHandler := api.NewAdminHandler(database, langMgr)
 
@@ -250,6 +261,11 @@ func main() {
 		adminGroup.GET("/analytics/topics", adminHandler.GetChatAnalytics)
 		adminGroup.GET("/analytics/users", adminHandler.GetUserStats)
 		adminGroup.GET("/analytics/calls", adminHandler.GetCallHistory)
+
+		// System settings management
+		adminGroup.GET("/settings", adminHandler.GetSystemSettings)
+		adminGroup.GET("/settings/:key", adminHandler.GetSystemSetting)
+		adminGroup.PUT("/settings/:key", adminHandler.UpdateSystemSetting)
 	}
 
 	// WebSocket chat route (protected via query param/header)

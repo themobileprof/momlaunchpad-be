@@ -4,18 +4,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/themobileprof/momlaunchpad-be/internal/conversation"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 )
 
 // PromptRequest contains all information needed to build a super-prompt
 type PromptRequest struct {
-	UserID          string
-	UserMessage     string
-	Language        string
-	IsSmallTalk     bool
-	ShortTermMemory []memory.Message
-	Facts           []memory.UserFact
+	UserID            string
+	UserMessage       string
+	Language          string
+	IsSmallTalk       bool
+	ShortTermMemory   []memory.Message
+	Facts             []memory.UserFact
+	RecentSymptoms    []map[string]interface{} // Recent symptom history
+	ConversationState *conversation.State      // Track conversation context
+	AIName            string                   // AI assistant name (e.g., "MomBot")
 }
 
 // Builder constructs prompts for the DeepSeek API
@@ -38,9 +42,13 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 	if req.IsSmallTalk {
 		// Small talk can be handled with canned responses
 		// But if we need to use AI, keep it minimal
+		aiName := req.AIName
+		if aiName == "" {
+			aiName = "your pregnancy support assistant"
+		}
 		messages = append(messages, deepseek.ChatMessage{
 			Role:    "system",
-			Content: "You are a friendly pregnancy support assistant. Keep responses brief and warm.",
+			Content: fmt.Sprintf("You are %s. Keep responses brief and warm.", aiName),
 		})
 		messages = append(messages, deepseek.ChatMessage{
 			Role:    "user",
@@ -82,8 +90,14 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 	var sb strings.Builder
 	sb.Grow(1024)
 
-	// Base instruction
-	sb.WriteString("You are a knowledgeable and empathetic pregnancy support assistant. ")
+	// Use custom AI name if provided
+	aiName := req.AIName
+	if aiName == "" {
+		aiName = "a pregnancy support assistant"
+	}
+
+	// Base instruction with dynamic name
+	sb.WriteString(fmt.Sprintf("You are %s, a knowledgeable and empathetic assistant. ", aiName))
 	sb.WriteString("Your role is to provide accurate, helpful, and supportive information about pregnancy, symptoms, and related topics. ")
 	sb.WriteString("\n\n")
 
@@ -91,12 +105,40 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 	sb.WriteString("RESPONSE STYLE:\n")
 	sb.WriteString("- Keep responses brief and conversational (2-4 sentences maximum)\n")
 	sb.WriteString("- Speak like a caring friend on a phone call, not a medical textbook\n")
+	sb.WriteString("- Use simple, everyday language - avoid medical jargon\n")
 	sb.WriteString("\n")
+
+	// Conversation flow with state tracking
 	sb.WriteString("CONVERSATION FLOW:\n")
-	sb.WriteString("- FIRST message about a symptom: Ask 1-2 clarifying questions (timing, severity, etc.)\n")
-	sb.WriteString("- AFTER user provides details: Give brief, helpful advice and conclude (DO NOT ask more questions)\n")
-	sb.WriteString("- Stay on topic - don't introduce new questions unless user brings up new concerns\n")
-	sb.WriteString("- End with reassurance or gentle medical consultation reminder if needed\n")
+
+	// If there's a primary concern being tracked
+	if req.ConversationState != nil && req.ConversationState.PrimaryConcern != "" {
+		sb.WriteString(fmt.Sprintf("PRIMARY CONCERN: %s\n", req.ConversationState.PrimaryConcern))
+		sb.WriteString("- This is what the user originally asked about - stay focused on resolving this first\n")
+
+		if len(req.ConversationState.SecondaryTopics) > 0 {
+			sb.WriteString("- User mentioned side topics, but address them BRIEFLY and return to primary concern\n")
+		}
+
+		if req.ConversationState.FollowUpCount >= 2 {
+			sb.WriteString("- You've asked enough follow-ups - now provide final advice on PRIMARY CONCERN and conclude\n")
+		} else {
+			sb.WriteString("- Ask 1-2 clarifying questions about PRIMARY CONCERN only\n")
+		}
+	} else {
+		// Initial message - establish primary concern
+		sb.WriteString("- Identify the main concern from user's message\n")
+		sb.WriteString("- Ask 1-2 clarifying questions about that ONE topic (timing, severity, etc.)\n")
+		sb.WriteString("- Ignore side mentions until primary concern is addressed\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString("RULES:\n")
+	sb.WriteString("1. ONE concern at a time - don't jump between topics\n")
+	sb.WriteString("2. After 2 follow-up questions, give advice and conclude\n")
+	sb.WriteString("3. If user mentions multiple symptoms, acknowledge but focus on the FIRST/MAIN one\n")
+	sb.WriteString("4. Only after resolving primary concern can you address secondary topics\n")
+	sb.WriteString("5. End conversations decisively - don't keep asking questions indefinitely\n")
 	sb.WriteString("\n")
 
 	// Language instruction
@@ -117,27 +159,48 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 		// Pregnancy stage (high priority)
 		pregnancyWeek := getFactValue(req.Facts, "pregnancy_week")
 		if pregnancyWeek != "" {
-			sb.WriteString(fmt.Sprintf("- Pregnancy week: %s weeks\n", pregnancyWeek))
+			sb.WriteString(fmt.Sprintf("- Pregnancy Week: %s\n", pregnancyWeek))
 		}
 
 		// Other relevant facts
-		diet := getFactValue(req.Facts, "diet")
-		if diet != "" {
-			sb.WriteString(fmt.Sprintf("- Diet: %s\n", diet))
-		}
-
-		exercise := getFactValue(req.Facts, "exercise")
-		if exercise != "" {
-			sb.WriteString(fmt.Sprintf("- Exercise: %s\n", exercise))
-		}
-
-		// Include other facts
 		for _, fact := range req.Facts {
-			if fact.Key != "pregnancy_week" && fact.Key != "diet" && fact.Key != "exercise" {
+			if fact.Key != "pregnancy_week" && fact.Confidence > 0.6 {
 				sb.WriteString(fmt.Sprintf("- %s: %s\n", fact.Key, fact.Value))
 			}
 		}
+		sb.WriteString("\n")
+	}
 
+	// Recent symptom history (CRITICAL for context and safety)
+	if len(req.RecentSymptoms) > 0 {
+		sb.WriteString("RECENT SYMPTOM HISTORY (important for tracking patterns):\n")
+		for i, symptom := range req.RecentSymptoms {
+			if i >= 5 { // Limit to 5 most recent for prompt space
+				break
+			}
+
+			symptomType := symptom["symptom_type"].(string)
+			severity := symptom["severity"].(string)
+			frequency := symptom["frequency"].(string)
+			onsetTime := symptom["onset_time"].(string)
+			isResolved := symptom["is_resolved"].(bool)
+
+			status := "ongoing"
+			if isResolved {
+				status = "resolved"
+			}
+
+			sb.WriteString(fmt.Sprintf("- %s (%s): %s, %s - %s\n",
+				symptomType, status, severity, frequency, onsetTime))
+
+			// Include associated symptoms if present
+			if assocSymptoms, ok := symptom["associated_symptoms"].([]string); ok && len(assocSymptoms) > 0 {
+				sb.WriteString(fmt.Sprintf("  (with: %s)\n", strings.Join(assocSymptoms, ", ")))
+			}
+		}
+		sb.WriteString("\n")
+		sb.WriteString("IMPORTANT: Check for patterns or worsening symptoms that may require urgent attention.\n")
+		sb.WriteString("If you see RED FLAGS (severe/frequent bleeding, severe headaches + vision changes, severe abdominal pain), advise immediate medical care.\n")
 		sb.WriteString("\n")
 	}
 

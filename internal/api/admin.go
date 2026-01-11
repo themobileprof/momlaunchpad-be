@@ -513,3 +513,73 @@ func (h *AdminHandler) GetCallHistory(c *gin.Context) {
 		"calls":       calls,
 	})
 }
+
+// ============================================================================
+// SYSTEM SETTINGS
+// ============================================================================
+
+// UpdateSystemSettingRequest represents a request to update a setting
+type UpdateSystemSettingRequest struct {
+	Value string `json:"value" binding:"required"`
+}
+
+// GetSystemSettings returns all system settings
+// GET /api/admin/settings
+func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
+	settings, err := h.db.GetAllSystemSettings(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get settings"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"settings": settings})
+}
+
+// GetSystemSetting returns a single system setting by key
+// GET /api/admin/settings/:key
+func (h *AdminHandler) GetSystemSetting(c *gin.Context) {
+	key := c.Param("key")
+	if key == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "setting key required"})
+		return
+	}
+
+	setting, err := h.db.GetSystemSetting(c.Request.Context(), key)
+	if err != nil {
+		if err == db.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "setting not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get setting"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"setting": setting})
+}
+
+// UpdateSystemSetting updates a system setting value
+// PUT /api/admin/settings/:key
+func (h *AdminHandler) UpdateSystemSetting(c *gin.Context) {
+	key := c.Param("key")
+	if key == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "setting key required"})
+		return
+	}
+
+	var req UpdateSystemSettingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if err := h.db.UpdateSystemSetting(c.Request.Context(), key, req.Value); err != nil {
+		if err == db.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "setting not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update setting"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "setting updated successfully"})
+}
