@@ -17,7 +17,7 @@ type QuotaChecker interface {
 
 func RequireFeature(checker FeatureChecker, featureKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userIDVal, ok := c.Get("userID")
+		userIDVal, ok := c.Get("user_id")
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing user id"})
 			return
@@ -49,7 +49,7 @@ func RequireFeature(checker FeatureChecker, featureKey string) gin.HandlerFunc {
 func CheckQuota(checker QuotaChecker, featureCode string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract userID from context (set by JWT middleware upstream)
-		userIDVal, ok := c.Get("userID")
+		userIDVal, ok := c.Get("user_id")
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing user id"})
 			return

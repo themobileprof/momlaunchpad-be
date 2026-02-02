@@ -23,7 +23,7 @@ func NewSymptomHandler(database *db.DB) *SymptomHandler {
 // GetSymptomHistory returns symptom history for the authenticated user
 // GET /api/symptoms/history?limit=20&type=headache
 func (h *SymptomHandler) GetSymptomHistory(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -52,7 +52,7 @@ func (h *SymptomHandler) GetSymptomHistory(c *gin.Context) {
 // GetRecentSymptoms returns most recent symptoms for dashboard/overview
 // GET /api/symptoms/recent?limit=5
 func (h *SymptomHandler) GetRecentSymptoms(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -78,7 +78,7 @@ func (h *SymptomHandler) GetRecentSymptoms(c *gin.Context) {
 // MarkSymptomResolved marks a symptom as resolved
 // PUT /api/symptoms/:id/resolve
 func (h *SymptomHandler) MarkSymptomResolved(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -104,7 +104,7 @@ func (h *SymptomHandler) MarkSymptomResolved(c *gin.Context) {
 // GetSymptomStats provides summary statistics about symptoms
 // GET /api/symptoms/stats
 func (h *SymptomHandler) GetSymptomStats(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -59,10 +60,12 @@ type UpdateSavingsGoalRequest struct {
 // GetSavingsSummary retrieves the savings summary for the current user
 func (h *SavingsHandler) GetSavingsSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	log.Printf("[DEBUG] GetSavingsSummary called for user: %s", userID)
 
 	// Get user to fetch EDD and goal
 	user, err := h.db.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
+		log.Printf("[ERROR] GetSavingsSummary failed to fetch user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 		return
 	}
@@ -70,6 +73,7 @@ func (h *SavingsHandler) GetSavingsSummary(c *gin.Context) {
 	// Get total savings
 	totalSaved, err := h.db.GetTotalSavings(c.Request.Context(), userID)
 	if err != nil {
+		log.Printf("[ERROR] GetSavingsSummary failed to get total savings: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate savings"})
 		return
 	}
@@ -100,48 +104,23 @@ func (h *SavingsHandler) GetSavingsSummary(c *gin.Context) {
 		response.DaysUntilDelivery = &days
 	}
 
+	log.Printf("[DEBUG] GetSavingsSummary success. Response: %+v", response)
 	c.JSON(http.StatusOK, response)
 }
 
 // CreateSavingsEntry creates a new savings entry
 func (h *SavingsHandler) CreateSavingsEntry(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-
-	var req CreateSavingsEntryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Use current date if not provided
-	entryDate := time.Now()
-	if req.EntryDate != nil {
-		entryDate = *req.EntryDate
-	}
-
-	entry := &db.SavingsEntry{
-		UserID:    userID,
-		Amount:    req.Amount,
-		EntryDate: entryDate,
-	}
-	if req.Description != "" {
-		entry.Description = &req.Description
-	}
-
-	if err := h.db.CreateSavingsEntry(c.Request.Context(), entry); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create savings entry"})
-		return
-	}
-
-	c.JSON(http.StatusCreated, savingsEntryToResponse(entry))
+// ...
 }
 
 // GetSavingsEntries retrieves all savings entries for the current user
 func (h *SavingsHandler) GetSavingsEntries(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	log.Printf("[DEBUG] GetSavingsEntries called for user: %s", userID)
 
 	entries, err := h.db.GetUserSavingsEntries(c.Request.Context(), userID)
 	if err != nil {
+		log.Printf("[ERROR] GetSavingsEntries failed to fetch entries: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch savings entries"})
 		return
 	}
@@ -151,6 +130,7 @@ func (h *SavingsHandler) GetSavingsEntries(c *gin.Context) {
 		response = append(response, savingsEntryToResponse(&entries[i]))
 	}
 
+	log.Printf("[DEBUG] GetSavingsEntries success. Count: %d", len(response))
 	c.JSON(http.StatusOK, response)
 }
 

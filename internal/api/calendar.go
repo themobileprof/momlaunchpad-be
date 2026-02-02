@@ -42,6 +42,7 @@ type ReminderResponse struct {
 	Title        string    `json:"title"`
 	Description  string    `json:"description,omitempty"`
 	ReminderTime time.Time `json:"reminder_time"`
+	Priority     string    `json:"priority"` // Added default priority
 	IsCompleted  bool      `json:"is_completed"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -173,6 +174,7 @@ func reminderToResponse(reminder *db.Reminder) ReminderResponse {
 		Title:        reminder.Title,
 		Description:  description,
 		ReminderTime: reminder.ReminderTime,
+		Priority:     "medium", // Default until added to DB
 		IsCompleted:  reminder.IsCompleted,
 		CreatedAt:    reminder.CreatedAt,
 		UpdatedAt:    reminder.UpdatedAt,
