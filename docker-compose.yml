@@ -10,6 +10,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://samuel:tummy@host.docker.internal:5432/momlaunchpad?sslmode=disable
+    volumes:
+      - ./.env:/app/.env
     ports:
       - "${PORT:-8080}:8080"
     extra_hosts:
