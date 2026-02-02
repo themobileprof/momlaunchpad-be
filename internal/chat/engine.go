@@ -29,14 +29,16 @@ type Responder interface {
 	SendCalendarSuggestion(suggestion calendar.Suggestion) error
 	SendError(message string) error
 	SendDone() error
+	SetConversationID(id string)
 }
 
 // ProcessRequest contains all data needed to process a message
 type ProcessRequest struct {
-	UserID    string
-	Message   string
-	Language  string
-	Responder Responder
+	UserID         string
+	ConversationID string
+	Message        string
+	Language       string
+	Responder      Responder
 }
 
 // Engine handles core conversation logic independent of transport
@@ -78,7 +80,8 @@ type LanguageInterface interface {
 }
 
 type DBInterface interface {
-	SaveMessage(ctx context.Context, userID, role, content string) (*db.Message, error)
+	SaveMessage(ctx context.Context, userID, conversationID, role, content string) (*db.Message, error)
+	CreateConversation(ctx context.Context, userID string, title *string) (*db.Conversation, error)
 	GetUserFacts(ctx context.Context, userID string) ([]db.UserFact, error)
 	SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error)
 	GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error)
@@ -97,10 +100,10 @@ func NewEngine(
 	database DBInterface,
 ) *Engine {
 	return &Engine{
-		classifier:    cls,
-		memoryManager: mem,
-		promptBuilder: pb,
-		llmClient:     client,
+		classifier:     cls,
+		memoryManager:  mem,
+		promptBuilder:  pb,
+		llmClient:      client,
 		calSuggester:   cal,
 		langManager:    lm,
 		db:             database,
@@ -112,8 +115,31 @@ func NewEngine(
 }
 
 // ProcessMessage processes a chat message and sends responses via the provided responder
-func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
+func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string, error) {
 	log.Printf("Processing message: userID=%s, length=%d", req.UserID, len(req.Message))
+
+	// Ensure conversation ID exists
+	conversationID := req.ConversationID
+	if conversationID == "" {
+		// Auto-generate title from first few words (up to 50 chars)
+		title := req.Message
+		if len(title) > 50 {
+			title = title[:47] + "..."
+		}
+		
+		newConv, err := e.db.CreateConversation(ctx, req.UserID, &title)
+		if err != nil {
+			return "", fmt.Errorf("failed to create conversation: %w", err)
+		}
+		conversationID = newConv.ID
+		log.Printf("Created new conversation: %s", conversationID)
+		
+		// Optionally notify responder of new conversation ID? 
+		// For now, we assume the client will see it in the message history or list query.
+	}
+	
+	// Notify responder of conversation ID
+	req.Responder.SetConversationID(conversationID)
 
 	if privacy.ContainsPII(req.Message) {
 		log.Printf("Warning: Potential PII detected in message from user=%s", req.UserID)
@@ -122,8 +148,8 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 	result := e.classifier.Classify(req.Message, req.Language)
 	log.Printf("Intent classified: %s (confidence: %.2f)", result.Intent, result.Confidence)
 
-	if _, err := e.db.SaveMessage(ctx, req.UserID, "user", req.Message); err != nil {
-		return fmt.Errorf("failed to save message: %w", err)
+	if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "user", req.Message); err != nil {
+		return conversationID, fmt.Errorf("failed to save message: %w", err)
 	}
 
 	e.memoryManager.AddMessage(req.UserID, memory.Message{
@@ -134,11 +160,17 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 	if result.Intent == classifier.IntentSmallTalk {
 		response := getSmallTalkResponse(req.Language)
 		if err := req.Responder.SendMessage(response); err != nil {
-			return err
+			return conversationID, err
 		}
+		
+		// Also save assistant response
+		if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "assistant", response); err != nil {
+			log.Printf("Failed to save assistant message: %v", err)
+		}
+		
 		// Reset conversation state on small talk
 		e.convManager.Reset(req.UserID)
-		return req.Responder.SendDone()
+		return conversationID, req.Responder.SendDone()
 	}
 
 	// Get conversation state
@@ -188,7 +220,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 	if shouldSuggest := e.calSuggester.ShouldSuggest(result.Intent, req.Message); shouldSuggest.ShouldSuggest {
 		suggestion := e.calSuggester.BuildSuggestion(result.Intent, req.Message)
 		if err := req.Responder.SendCalendarSuggestion(suggestion); err != nil {
-			return err
+			return conversationID, err
 		}
 	}
 
@@ -196,7 +228,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		log.Printf("Circuit breaker open, using fallback response")
 		fbResp := fallback.GetCircuitOpenResponse(req.Language)
 		req.Responder.SendMessage(fbResp.Content)
-		return req.Responder.SendDone()
+		return conversationID, req.Responder.SendDone()
 	}
 
 	// Fetch facts, symptoms, AI name, and short-term memory concurrently for speed
@@ -291,16 +323,16 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 		}
 
 		req.Responder.SendMessage(fbResp.Content)
-		return req.Responder.SendDone()
+		return conversationID, req.Responder.SendDone()
 	}
 
 	// Send the complete response at once
 	if err := req.Responder.SendMessage(assistantMsg); err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+		return conversationID, fmt.Errorf("failed to send message: %w", err)
 	}
 
 	// Save assistant message to DB and memory
-	if _, err := e.db.SaveMessage(ctx, req.UserID, "assistant", assistantMsg); err != nil {
+	if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "assistant", assistantMsg); err != nil {
 		log.Printf("Failed to save assistant message: %v", err)
 	}
 	e.memoryManager.AddMessage(req.UserID, memory.Message{
@@ -310,7 +342,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 
 	e.extractAndSaveFacts(ctx, req.UserID, req.Message, assistantMsg)
 
-	return req.Responder.SendDone()
+	return conversationID, req.Responder.SendDone()
 }
 
 func getSmallTalkResponse(language string) string {

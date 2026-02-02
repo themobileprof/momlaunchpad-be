@@ -100,13 +100,24 @@ type User struct {
 	UpdatedAt            time.Time
 }
 
-// Message represents a chat message
-type Message struct {
+// Conversation represents a chat session
+type Conversation struct {
 	ID        string
 	UserID    string
-	Role      string
-	Content   string
+	Title     *string
+	IsStarred bool
 	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Message represents a chat message
+type Message struct {
+	ID             string
+	UserID         string
+	ConversationID string
+	Role           string
+	Content        string
+	CreatedAt      time.Time
 }
 
 // UserFact represents a long-term memory fact

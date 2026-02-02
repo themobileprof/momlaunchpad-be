@@ -79,16 +79,16 @@ func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 }
 
 // SaveMessage saves a chat message
-func (db *DB) SaveMessage(ctx context.Context, userID, role, content string) (*Message, error) {
+func (db *DB) SaveMessage(ctx context.Context, userID, conversationID, role, content string) (*Message, error) {
 	query := `
-		INSERT INTO messages (user_id, role, content)
-		VALUES ($1, $2, $3)
-		RETURNING id, user_id, role, content, created_at
+		INSERT INTO messages (user_id, conversation_id, role, content)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, user_id, conversation_id, role, content, created_at
 	`
 
 	msg := &Message{}
-	err := db.QueryRowContext(ctx, query, userID, role, content).Scan(
-		&msg.ID, &msg.UserID, &msg.Role, &msg.Content, &msg.CreatedAt,
+	err := db.QueryRowContext(ctx, query, userID, conversationID, role, content).Scan(
+		&msg.ID, &msg.UserID, &msg.ConversationID, &msg.Role, &msg.Content, &msg.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save message: %w", err)

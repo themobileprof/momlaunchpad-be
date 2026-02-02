@@ -25,12 +25,13 @@ type VoiceHandler struct {
 
 // VoiceSession stores data for an active voice call
 type VoiceSession struct {
-	UserID   string
-	CallSid  string
-	Language string
-	From     string
-	Messages []string // Store conversation history
-	mu       sync.RWMutex
+	UserID         string
+	CallSid        string
+	Language       string
+	From           string
+	Messages       []string // Store conversation history
+	ConversationID string
+	mu             sync.RWMutex
 }
 
 // NewVoiceHandler creates a new voice handler
@@ -160,13 +161,14 @@ func (h *VoiceHandler) HandleGather(c *gin.Context) {
 	// Process message through chat engine
 	responder := NewVoiceResponder(session)
 	req := chat.ProcessRequest{
-		UserID:    session.UserID,
-		Message:   speechResult,
-		Language:  session.Language,
-		Responder: responder,
+		UserID:         session.UserID,
+		ConversationID: session.ConversationID,
+		Message:        speechResult,
+		Language:       session.Language,
+		Responder:      responder,
 	}
 
-	if err := h.chatEngine.ProcessMessage(c.Request.Context(), req); err != nil {
+	if _, err := h.chatEngine.ProcessMessage(c.Request.Context(), req); err != nil {
 		log.Printf("Failed to process message: %v", err)
 		twilioLang := twilio.GetTwilioLanguageCode(session.Language)
 		voice := twilio.GetVoiceForLanguage(session.Language)
@@ -232,6 +234,13 @@ func NewVoiceResponder(session *VoiceSession) *VoiceResponder {
 	return &VoiceResponder{
 		session: session,
 	}
+}
+
+// SetConversationID updates the session with the conversation ID
+func (r *VoiceResponder) SetConversationID(id string) {
+	r.session.mu.Lock()
+	defer r.session.mu.Unlock()
+	r.session.ConversationID = id
 }
 
 // SendMessage accumulates AI response chunks

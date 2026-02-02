@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE messages DROP COLUMN IF NOT EXISTS conversation_id;
+DROP TABLE IF EXISTS conversations;
+
+COMMIT;

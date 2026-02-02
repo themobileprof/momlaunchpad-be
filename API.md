@@ -652,6 +652,152 @@ Twilio webhook for call status updates.
 
 ---
 
+### Conversations
+
+#### GET /api/conversations
+List conversations (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+- `limit`: items per page (default: 20)
+- `offset`: pagination offset (default: 0)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "user_id": "uuid",
+    "title": "Conversation Title",
+    "is_starred": false,
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+#### POST /api/conversations
+Create a new conversation (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "title": "My New Chat"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "title": "My New Chat",
+  "is_starred": false,
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z"
+}
+```
+
+#### GET /api/conversations/:id
+Get a specific conversation (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "title": "Conversation Title",
+  "is_starred": false,
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z"
+}
+```
+
+#### PATCH /api/conversations/:id
+Update conversation details (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "title": "Updated Title",
+  "is_starred": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "title": "Updated Title",
+  "is_starred": true,
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:05:00Z"
+}
+```
+
+#### DELETE /api/conversations/:id
+Delete a conversation (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "Conversation deleted"
+}
+```
+
+#### GET /api/conversations/:id/messages
+List messages in a conversation (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Query Parameters:**
+- `limit`: items per page (default: 50)
+- `offset`: pagination offset (default: 0)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "user_id": "uuid",
+    "conversation_id": "uuid",
+    "role": "user",
+    "content": "Hello",
+    "created_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+---
+
 ### Admin (Protected + Admin Role)
 
 All admin endpoints require:

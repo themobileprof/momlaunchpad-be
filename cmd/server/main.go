@@ -141,6 +141,7 @@ func main() {
 	savingsHandler := api.NewSavingsHandler(database)
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
 	symptomHandler := api.NewSymptomHandler(database)
+	conversationHandler := api.NewConversationHandler(database)
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -237,6 +238,11 @@ func main() {
 		symptomGroup.GET("/stats", symptomHandler.GetSymptomStats)
 		symptomGroup.PUT("/:id/resolve", symptomHandler.MarkSymptomResolved)
 	}
+
+	// Conversation routes (protected)
+	conversationGroup := router.Group("/api")
+	conversationGroup.Use(middleware.JWTAuth(jwtSecret))
+	conversationHandler.RegisterRoutes(conversationGroup)
 
 	// Initialize admin handler
 	adminHandler := api.NewAdminHandler(database, langMgr)

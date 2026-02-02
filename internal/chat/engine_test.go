@@ -112,9 +112,12 @@ type mockDB struct {
 	facts    []string
 }
 
-func (m *mockDB) SaveMessage(ctx context.Context, userID, role, content string) (*db.Message, error) {
-	m.messages = append(m.messages, userID+":"+role+":"+content)
-	return &db.Message{}, nil
+func (m *mockDB) SaveMessage(ctx context.Context, userID, conversationID, role, content string) (*db.Message, error) {
+	m.messages = append(m.messages, userID+":"+conversationID+":"+role+":"+content)
+	return &db.Message{ConversationID: conversationID}, nil
+}
+func (m *mockDB) CreateConversation(ctx context.Context, userID string, title *string) (*db.Conversation, error) {
+	return &db.Conversation{ID: "mock-conv-id"}, nil
 }
 func (m *mockDB) GetUserFacts(ctx context.Context, userID string) ([]db.UserFact, error) {
 	return []db.UserFact{}, nil
@@ -139,6 +142,7 @@ func (m *mockDB) GetSystemSetting(ctx context.Context, key string) (*db.SystemSe
 type mockResponder struct {
 	messages []string
 	done     bool
+	convID   string
 }
 
 func (m *mockResponder) SendMessage(content string) error {
@@ -148,3 +152,4 @@ func (m *mockResponder) SendMessage(content string) error {
 func (m *mockResponder) SendCalendarSuggestion(suggestion calendar.Suggestion) error { return nil }
 func (m *mockResponder) SendError(message string) error                              { return nil }
 func (m *mockResponder) SendDone() error                                             { m.done = true; return nil }
+func (m *mockResponder) SetConversationID(id string)                                 { m.convID = id }

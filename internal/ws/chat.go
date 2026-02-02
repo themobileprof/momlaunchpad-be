@@ -48,14 +48,16 @@ func NewChatHandler(
 
 // IncomingMessage represents a message from the client
 type IncomingMessage struct {
-	Content string `json:"content"`
+	Content        string `json:"content"`
+	ConversationID string `json:"conversation_id,omitempty"`
 }
 
 // OutgoingMessage represents a message to the client
 type OutgoingMessage struct {
-	Type    string      `json:"type"` // "message", "calendar", "error", "done"
-	Content string      `json:"content,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+	Type           string      `json:"type"` // "message", "calendar", "error", "done"
+	Content        string      `json:"content,omitempty"`
+	Data           interface{} `json:"data,omitempty"`
+	ConversationID string      `json:"conversation_id,omitempty"`
 }
 
 // HandleChat handles WebSocket chat connections
@@ -142,13 +144,14 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 		// Delegate to transport-agnostic engine
 		req := chat.ProcessRequest{
-			UserID:    userID,
-			Message:   msg.Content,
-			Language:  userLanguage,
-			Responder: responder,
+			UserID:         userID,
+			ConversationID: msg.ConversationID,
+			Message:        msg.Content,
+			Language:       userLanguage,
+			Responder:      responder,
 		}
 
-		if err := h.engine.ProcessMessage(c.Request.Context(), req); err != nil {
+		if _, err := h.engine.ProcessMessage(c.Request.Context(), req); err != nil {
 			log.Printf("Error processing message: %v", err)
 			h.sendError(conn, "Sorry, I encountered an error processing your message.")
 			continue
@@ -164,33 +167,42 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 // wsResponder implements chat.Responder for WebSocket transport
 type wsResponder struct {
-	conn *websocket.Conn
+	conn           *websocket.Conn
+	conversationID string
+}
+
+func (w *wsResponder) SetConversationID(id string) {
+	w.conversationID = id
 }
 
 func (w *wsResponder) SendMessage(content string) error {
 	return w.conn.WriteJSON(OutgoingMessage{
-		Type:    "message",
-		Content: content,
+		Type:           "message",
+		Content:        content,
+		ConversationID: w.conversationID,
 	})
 }
 
 func (w *wsResponder) SendCalendarSuggestion(suggestion calendar.Suggestion) error {
 	return w.conn.WriteJSON(OutgoingMessage{
-		Type: "calendar",
-		Data: suggestion,
+		Type:           "calendar",
+		Data:           suggestion,
+		ConversationID: w.conversationID,
 	})
 }
 
 func (w *wsResponder) SendError(message string) error {
 	return w.conn.WriteJSON(OutgoingMessage{
-		Type:    "error",
-		Content: message,
+		Type:           "error",
+		Content:        message,
+		ConversationID: w.conversationID,
 	})
 }
 
 func (w *wsResponder) SendDone() error {
 	return w.conn.WriteJSON(OutgoingMessage{
-		Type: "done",
+		Type:           "done",
+		ConversationID: w.conversationID,
 	})
 }
 
