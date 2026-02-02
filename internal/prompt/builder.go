@@ -6,7 +6,7 @@ import (
 
 	"github.com/themobileprof/momlaunchpad-be/internal/conversation"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
-	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
 // PromptRequest contains all information needed to build a super-prompt
@@ -33,10 +33,10 @@ func NewBuilder() *Builder {
 }
 
 // BuildPrompt constructs a super-prompt from the request
-func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
+func (b *Builder) BuildPrompt(req PromptRequest) []llm.ChatMessage {
 	// Pre-allocate with estimated capacity (system + history + user)
 	capacity := 2 + len(req.ShortTermMemory)
-	messages := make([]deepseek.ChatMessage, 0, capacity)
+	messages := make([]llm.ChatMessage, 0, capacity)
 
 	// For small talk, return minimal prompt
 	if req.IsSmallTalk {
@@ -46,11 +46,11 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 		if aiName == "" {
 			aiName = "your pregnancy support assistant"
 		}
-		messages = append(messages, deepseek.ChatMessage{
+		messages = append(messages, llm.ChatMessage{
 			Role:    "system",
 			Content: fmt.Sprintf("You are %s. Keep responses brief and warm.", aiName),
 		})
-		messages = append(messages, deepseek.ChatMessage{
+		messages = append(messages, llm.ChatMessage{
 			Role:    "user",
 			Content: req.UserMessage,
 		})
@@ -59,7 +59,7 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 
 	// Build system prompt with context
 	systemPrompt := b.buildSystemPrompt(req)
-	messages = append(messages, deepseek.ChatMessage{
+	messages = append(messages, llm.ChatMessage{
 		Role:    "system",
 		Content: systemPrompt,
 	})
@@ -68,7 +68,7 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 	for _, msg := range req.ShortTermMemory {
 		// Only include substantive messages
 		if !isLikelySmallTalk(msg.Content) {
-			messages = append(messages, deepseek.ChatMessage{
+			messages = append(messages, llm.ChatMessage{
 				Role:    msg.Role,
 				Content: msg.Content,
 			})
@@ -76,7 +76,7 @@ func (b *Builder) BuildPrompt(req PromptRequest) []deepseek.ChatMessage {
 	}
 
 	// Add current user message
-	messages = append(messages, deepseek.ChatMessage{
+	messages = append(messages, llm.ChatMessage{
 		Role:    "user",
 		Content: req.UserMessage,
 	})

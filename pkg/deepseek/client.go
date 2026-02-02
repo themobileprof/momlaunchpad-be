@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
-// HTTPClient implements the Client interface using HTTP requests
+// HTTPClient implements the llm.Client interface using HTTP requests
 type HTTPClient struct {
 	apiKey     string
 	baseURL    string
@@ -21,6 +23,9 @@ type HTTPClient struct {
 	httpClient *http.Client
 	timeout    time.Duration
 }
+
+// Ensure HTTPClient implements llm.Client
+var _ llm.Client = (*HTTPClient)(nil)
 
 // Config holds configuration for the DeepSeek client
 type Config struct {
@@ -68,8 +73,8 @@ func NewHTTPClient(config Config) *HTTPClient {
 	}
 }
 
-// StreamChatCompletion implements Client.StreamChatCompletion
-func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req ChatRequest) (<-chan ChatChunk, error) {
+// StreamChatCompletion implements llm.Client.StreamChatCompletion
+func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req llm.ChatRequest) (<-chan llm.ChatChunk, error) {
 	// Set default model if not provided
 	if req.Model == "" {
 		req.Model = c.model
@@ -108,7 +113,7 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req ChatRequest) 
 	}
 
 	// Create channel for streaming chunks (larger buffer for throughput)
-	ch := make(chan ChatChunk, 32)
+	ch := make(chan llm.ChatChunk, 32)
 
 	// Start goroutine to read streaming response
 	go func() {
@@ -138,7 +143,7 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req ChatRequest) 
 			}
 
 			// Parse chunk
-			var chunk ChatChunk
+			var chunk llm.ChatChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				// Log error but continue processing
 				continue
@@ -156,8 +161,8 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req ChatRequest) 
 	return ch, nil
 }
 
-// ChatCompletion implements Client.ChatCompletion
-func (c *HTTPClient) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+// ChatCompletion implements llm.Client.ChatCompletion
+func (c *HTTPClient) ChatCompletion(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	// Set default model if not provided
 	if req.Model == "" {
 		req.Model = c.model
@@ -196,7 +201,7 @@ func (c *HTTPClient) ChatCompletion(ctx context.Context, req ChatRequest) (*Chat
 	}
 
 	// Parse response
-	var chatResp ChatResponse
+	var chatResp llm.ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

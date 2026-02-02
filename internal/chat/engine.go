@@ -20,7 +20,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/privacy"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/internal/symptoms"
-	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
 // Responder defines the interface for sending responses to any transport
@@ -44,7 +44,7 @@ type Engine struct {
 	classifier     ClassifierInterface
 	memoryManager  MemoryInterface
 	promptBuilder  PromptInterface
-	deepseekClient deepseek.Client
+	llmClient      llm.Client
 	calSuggester   CalendarInterface
 	langManager    LanguageInterface
 	db             DBInterface
@@ -65,7 +65,7 @@ type MemoryInterface interface {
 }
 
 type PromptInterface interface {
-	BuildPrompt(req prompt.PromptRequest) []deepseek.ChatMessage
+	BuildPrompt(req prompt.PromptRequest) []llm.ChatMessage
 }
 
 type CalendarInterface interface {
@@ -91,16 +91,16 @@ func NewEngine(
 	cls ClassifierInterface,
 	mem MemoryInterface,
 	pb PromptInterface,
-	ds deepseek.Client,
+	client llm.Client,
 	cal CalendarInterface,
 	lm LanguageInterface,
 	database DBInterface,
 ) *Engine {
 	return &Engine{
-		classifier:     cls,
-		memoryManager:  mem,
-		promptBuilder:  pb,
-		deepseekClient: ds,
+		classifier:    cls,
+		memoryManager: mem,
+		promptBuilder: pb,
+		llmClient:     client,
 		calSuggester:   cal,
 		langManager:    lm,
 		db:             database,
@@ -249,30 +249,30 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) error {
 	}
 	messages := e.promptBuilder.BuildPrompt(promptReq)
 
-	log.Printf("Calling DeepSeek API with %d messages, maxTokens=%d", len(messages), 200)
+	log.Printf("Calling LLM API with %d messages, maxTokens=%d", len(messages), 200)
 
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, e.aiTimeout)
 	defer cancel()
 
-	deepseekReq := deepseek.ChatRequest{
-		Model:       "deepseek-chat",
+	chatReq := llm.ChatRequest{
+		Model:       "",    // Let client use default or we can inject it
 		Messages:    messages,
 		Temperature: 0.7,
 		MaxTokens:   200,   // Limit to ~150 words for voice-friendly, concise responses
 		Stream:      false, // Non-streaming for short responses
 	}
 
-	log.Printf("Calling DeepSeek API for user=%s", req.UserID)
+	log.Printf("Calling LLM API for user=%s", req.UserID)
 	var assistantMsg string
 	err := e.circuitBreaker.Call(func() error {
-		response, err := e.deepseekClient.ChatCompletion(ctxWithTimeout, deepseekReq)
+		response, err := e.llmClient.ChatCompletion(ctxWithTimeout, chatReq)
 		if err != nil {
-			log.Printf("DeepSeek API error: %v", err)
+			log.Printf("LLM API error: %v", err)
 			return err
 		}
 
 		if len(response.Choices) == 0 {
-			return fmt.Errorf("no response from DeepSeek")
+			return fmt.Errorf("no response from LLM")
 		}
 
 		assistantMsg = response.Choices[0].Message.Content

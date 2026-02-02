@@ -10,7 +10,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
-	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
 func TestEngineCreation(t *testing.T) {
@@ -18,7 +18,7 @@ func TestEngineCreation(t *testing.T) {
 		&mockClassifier{},
 		&mockMemoryManager{},
 		&mockPromptBuilder{},
-		&mockDeepSeekClient{},
+		&mockLLMClient{},
 		&mockCalSuggester{},
 		&mockLangManager{},
 		&mockDB{},
@@ -45,33 +45,51 @@ func (m *mockMemoryManager) GetShortTermMemory(userID string) []memory.Message {
 
 type mockPromptBuilder struct{}
 
-func (m *mockPromptBuilder) BuildPrompt(req prompt.PromptRequest) []deepseek.ChatMessage {
-	return []deepseek.ChatMessage{
+func (m *mockPromptBuilder) BuildPrompt(req prompt.PromptRequest) []llm.ChatMessage {
+	return []llm.ChatMessage{
 		{Role: "system", Content: "test"},
 		{Role: "user", Content: req.UserMessage},
 	}
 }
 
-type mockDeepSeekClient struct{}
+type mockLLMClient struct{}
 
-func (m *mockDeepSeekClient) StreamChatCompletion(ctx context.Context, req deepseek.ChatRequest) (<-chan deepseek.ChatChunk, error) {
-	ch := make(chan deepseek.ChatChunk, 1)
+func (m *mockLLMClient) StreamChatCompletion(ctx context.Context, req llm.ChatRequest) (<-chan llm.ChatChunk, error) {
+	ch := make(chan llm.ChatChunk, 1)
 	go func() {
 		defer close(ch)
-		chunk := deepseek.ChatChunk{}
+		chunk := llm.ChatChunk{}
 		chunk.Choices = make([]struct {
 			Index        int            `json:"index"`
-			Delta        deepseek.Delta `json:"delta"`
+			Delta        llm.Delta      `json:"delta"`
 			FinishReason *string        `json:"finish_reason"`
 		}, 1)
 		chunk.Choices[0].Delta.Content = "Test response"
 		ch <- chunk
-		close(ch)
 	}()
 	return ch, nil
 }
-func (m *mockDeepSeekClient) ChatCompletion(ctx context.Context, req deepseek.ChatRequest) (*deepseek.ChatResponse, error) {
-	return &deepseek.ChatResponse{}, nil
+func (m *mockLLMClient) ChatCompletion(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	return &llm.ChatResponse{
+		Choices: []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		}{
+			{
+				Message: struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}{
+					Role:    "assistant",
+					Content: "Test response",
+				},
+			},
+		},
+	}, nil
 }
 
 type mockCalSuggester struct{}

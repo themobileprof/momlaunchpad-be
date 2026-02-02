@@ -23,6 +23,8 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
+	"github.com/themobileprof/momlaunchpad-be/pkg/gemini"
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 	"github.com/themobileprof/momlaunchpad-be/pkg/twilio"
 )
 
@@ -35,7 +37,9 @@ func main() {
 	// Get configuration from environment
 	port := getEnv("PORT", "8080")
 	databaseURL := getEnv("DATABASE_URL", "")
+	llmProvider := getEnv("LLM_PROVIDER", "deepseek") // Default to deepseek
 	deepseekAPIKey := getEnv("DEEPSEEK_API_KEY", "")
+	geminiAPIKey := getEnv("GEMINI_API_KEY", "")
 	jwtSecret := getEnv("JWT_SECRET", "")
 	twilioAccountSID := getEnv("TWILIO_ACCOUNT_SID", "")
 	twilioAuthToken := getEnv("TWILIO_AUTH_TOKEN", "")
@@ -44,8 +48,11 @@ func main() {
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
-	if deepseekAPIKey == "" {
-		log.Fatal("DEEPSEEK_API_KEY is required")
+	if llmProvider == "deepseek" && deepseekAPIKey == "" {
+		log.Fatal("DEEPSEEK_API_KEY is required for deepseek provider")
+	}
+	if llmProvider == "gemini" && geminiAPIKey == "" {
+		log.Fatal("GEMINI_API_KEY is required for gemini provider")
 	}
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET is required")
@@ -64,9 +71,24 @@ func main() {
 	cls := classifier.NewClassifier()
 	memAdapter := db.NewMemoryAdapter(database)
 	memMgr := memory.NewMemoryManager(10, memAdapter) // Keep last 10 messages, load from DB
-	deepseekClient := deepseek.NewHTTPClient(deepseek.Config{
-		APIKey: deepseekAPIKey,
-	})
+
+	// Initialize LLM client
+	var llmClient llm.Client
+	switch llmProvider {
+	case "gemini":
+		llmClient = gemini.NewHTTPClient(gemini.Config{
+			APIKey: geminiAPIKey,
+		})
+		log.Println("✅ Initialize Gemini LLM client")
+	case "deepseek":
+		fallthrough
+	default:
+		llmClient = deepseek.NewHTTPClient(deepseek.Config{
+			APIKey: deepseekAPIKey,
+		})
+		log.Println("✅ Initialize DeepSeek LLM client")
+	}
+
 	promptBuilder := prompt.NewBuilder()
 	calSuggester := calendar.NewSuggester()
 	langMgr := language.NewManager()
@@ -88,7 +110,7 @@ func main() {
 		cls,
 		memMgr,
 		promptBuilder,
-		deepseekClient,
+		llmClient,
 		calSuggester,
 		langMgr,
 		database,
