@@ -27,7 +27,7 @@ RUN apk --no-cache add ca-certificates tzdata
 
 # Create app user
 RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+  adduser -D -u 1000 -G appuser appuser
 
 WORKDIR /app
 

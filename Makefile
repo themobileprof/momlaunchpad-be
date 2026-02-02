@@ -1,3 +1,10 @@
+
+# Load .env file if it exists
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
 .PHONY: help init test test-coverage test-watch dev build run clean migrate-up migrate-down docker-build docker-run
 
 help: ## Show this help message

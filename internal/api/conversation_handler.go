@@ -28,7 +28,7 @@ func (h *ConversationHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 func (h *ConversationHandler) ListConversations(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	
 	limitStr := c.Query("limit")
 	limit := 20
@@ -57,7 +57,7 @@ func (h *ConversationHandler) ListConversations(c *gin.Context) {
 }
 
 func (h *ConversationHandler) CreateConversation(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	
 	var req struct {
 		Title string `json:"title"`
@@ -99,7 +99,7 @@ func (h *ConversationHandler) CreateConversation(c *gin.Context) {
 }
 
 func (h *ConversationHandler) GetConversation(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	id := c.Param("id")
 	
 	conv, err := h.db.GetConversation(c.Request.Context(), id)
@@ -123,7 +123,7 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 }
 
 func (h *ConversationHandler) UpdateConversation(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	id := c.Param("id")
 	
 	// Check ownership
@@ -159,7 +159,7 @@ func (h *ConversationHandler) UpdateConversation(c *gin.Context) {
 }
 
 func (h *ConversationHandler) DeleteConversation(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	id := c.Param("id")
 	
 	// Check ownership
@@ -184,7 +184,7 @@ func (h *ConversationHandler) DeleteConversation(c *gin.Context) {
 }
 
 func (h *ConversationHandler) GetMessages(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
+	userID := c.MustGet("user_id").(string)
 	id := c.Param("id")
 	
 	// Check ownership

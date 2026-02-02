@@ -40,7 +40,7 @@ func (db *DB) GetConversations(ctx context.Context, userID string, limit, offset
 	}
 	defer rows.Close()
 	
-	var conversations []Conversation
+	conversations := make([]Conversation, 0)
 	for rows.Next() {
 		var c Conversation
 		if err := rows.Scan(&c.ID, &c.UserID, &c.Title, &c.IsStarred, &c.CreatedAt, &c.UpdatedAt); err != nil {
@@ -147,7 +147,7 @@ func (db *DB) GetMessagesByConversation(ctx context.Context, conversationID stri
 	}
 	defer rows.Close()
 	
-	var messages []Message
+	messages := make([]Message, 0)
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.UserID, &m.ConversationID, &m.Role, &m.Content, &m.CreatedAt); err != nil {

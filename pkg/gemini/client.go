@@ -37,7 +37,7 @@ type Config struct {
 // NewHTTPClient creates a new Gemini HTTP client
 func NewHTTPClient(config Config) *HTTPClient {
 	if config.Model == "" {
-		config.Model = "gemini-pro"
+		config.Model = "gemini-2.0-flash"
 	}
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second

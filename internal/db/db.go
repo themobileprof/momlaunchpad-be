@@ -88,85 +88,85 @@ func (db *DB) Close() error {
 
 // User represents a user in the database
 type User struct {
-	ID                   string
-	Email                string
-	PasswordHash         string
-	Name                 *string
-	Language             string
-	ExpectedDeliveryDate *time.Time
-	SavingsGoal          *float64
-	IsAdmin              bool
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	ID                   string     `json:"id"`
+	Email                string     `json:"email"`
+	PasswordHash         string     `json:"-"` // Don't expose password hash
+	Name                 *string    `json:"name"`
+	Language             string     `json:"language"`
+	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
+	SavingsGoal          *float64   `json:"savings_goal"`
+	IsAdmin              bool       `json:"is_admin"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 // Conversation represents a chat session
 type Conversation struct {
-	ID        string
-	UserID    string
-	Title     *string
-	IsStarred bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	Title     *string   `json:"title"`
+	IsStarred bool      `json:"is_starred"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Message represents a chat message
 type Message struct {
-	ID             string
-	UserID         string
-	ConversationID string
-	Role           string
-	Content        string
-	CreatedAt      time.Time
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	ConversationID string    `json:"conversation_id"`
+	Role           string    `json:"role"`
+	Content        string    `json:"content"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // UserFact represents a long-term memory fact
 type UserFact struct {
-	ID         string
-	UserID     string
-	Key        string
-	Value      string
-	Confidence float64
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	Key        string    `json:"key"`
+	Value      string    `json:"value"`
+	Confidence float64   `json:"confidence"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // Reminder represents a calendar reminder
 type Reminder struct {
-	ID           string
-	UserID       string
-	Title        string
-	Description  *string
-	ReminderTime time.Time
-	IsCompleted  bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Title        string    `json:"title"`
+	Description  *string   `json:"description"`
+	ReminderTime time.Time `json:"reminder_time"`
+	IsCompleted  bool      `json:"is_completed"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Language represents a supported language
 type Language struct {
-	Code           string
-	Name           string
-	NativeName     string
-	IsEnabled      bool
-	IsExperimental bool
-	CreatedAt      time.Time
+	Code           string    `json:"code"`
+	Name           string    `json:"name"`
+	NativeName     string    `json:"native_name"`
+	IsEnabled      bool      `json:"is_enabled"`
+	IsExperimental bool      `json:"is_experimental"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // SavingsEntry represents a savings record
 type SavingsEntry struct {
-	ID          string
-	UserID      string
-	Amount      float64
-	Description *string
-	EntryDate   time.Time
-	CreatedAt   time.Time
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	Amount      float64   `json:"amount"`
+	Description *string   `json:"description"`
+	EntryDate   time.Time `json:"entry_date"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // SystemSetting represents a system-wide configuration setting
 type SystemSetting struct {
-	Key         string
-	Value       string
-	Description *string
-	UpdatedAt   time.Time
+	Key         string    `json:"key"`
+	Value       string    `json:"value"`
+	Description *string   `json:"description"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
