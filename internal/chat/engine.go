@@ -87,6 +87,7 @@ type DBInterface interface {
 	GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error)
 	SaveOrUpdateFact(ctx context.Context, userID, key, value string, confidence float64) (*db.UserFact, error)
 	GetSystemSetting(ctx context.Context, key string) (*db.SystemSetting, error)
+	GetMostRecentConversation(ctx context.Context, userID string) (*db.Conversation, error)
 }
 
 // NewEngine creates a new transport-agnostic chat engine
@@ -121,21 +122,31 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 	// Ensure conversation ID exists
 	conversationID := req.ConversationID
 	if conversationID == "" {
-		// Auto-generate title from first few words (up to 50 chars)
-		title := req.Message
-		if len(title) > 50 {
-			title = title[:47] + "..."
+		// Check for a recent conversation (within 30 minutes) to continuity
+		recentConv, err := e.db.GetMostRecentConversation(ctx, req.UserID)
+		if err == nil && recentConv != nil {
+			// If updated within last 30 minutes, reuse it
+			if time.Since(recentConv.UpdatedAt) < 30*time.Minute {
+				conversationID = recentConv.ID
+				log.Printf("Reusing recent conversation: %s", conversationID)
+			}
 		}
-		
-		newConv, err := e.db.CreateConversation(ctx, req.UserID, &title)
-		if err != nil {
-			return "", fmt.Errorf("failed to create conversation: %w", err)
+
+		// If still empty (no recent found or too old), create new one
+		if conversationID == "" {
+			// Auto-generate title from first few words (up to 50 chars)
+			title := req.Message
+			if len(title) > 50 {
+				title = title[:47] + "..."
+			}
+			
+			newConv, err := e.db.CreateConversation(ctx, req.UserID, &title)
+			if err != nil {
+				return "", fmt.Errorf("failed to create conversation: %w", err)
+			}
+			conversationID = newConv.ID
+			log.Printf("Created new conversation: %s", conversationID)
 		}
-		conversationID = newConv.ID
-		log.Printf("Created new conversation: %s", conversationID)
-		
-		// Optionally notify responder of new conversation ID? 
-		// For now, we assume the client will see it in the message history or list query.
 	}
 	
 	// Notify responder of conversation ID

@@ -10,6 +10,7 @@ type Intent string
 
 const (
 	IntentSmallTalk  Intent = "small_talk"
+	IntentGratitude  Intent = "gratitude"
 	IntentPregnancyQ Intent = "pregnancy_question"
 	IntentSymptom    Intent = "symptom_report"
 	IntentScheduling Intent = "scheduling_related"
@@ -108,7 +109,7 @@ func (c *Classifier) Classify(input, lang string) ClassifierResult {
 		}
 	}
 
-	// Check for small talk first (greetings, goodbyes, thanks)
+	// Check for small talk first (greetings, goodbyes)
 	if c.matchesPatterns(normalized, c.greetingPatterns) {
 		return ClassifierResult{
 			Intent:     IntentSmallTalk,
@@ -123,10 +124,11 @@ func (c *Classifier) Classify(input, lang string) ClassifierResult {
 		}
 	}
 
+	// Check for gratitude (handled separately to preserve context)
 	if c.matchesPatterns(normalized, c.thanksPatterns) {
 		return ClassifierResult{
-			Intent:     IntentSmallTalk,
-			Confidence: 0.85,
+			Intent:     IntentGratitude,
+			Confidence: 0.9,
 		}
 	}
 

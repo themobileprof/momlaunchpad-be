@@ -56,6 +56,29 @@ func (db *DB) GetConversations(ctx context.Context, userID string, limit, offset
 	return conversations, nil
 }
 
+// GetMostRecentConversation retrieves the latest updated conversation for a user
+func (db *DB) GetMostRecentConversation(ctx context.Context, userID string) (*Conversation, error) {
+	query := `
+		SELECT id, user_id, title, is_starred, created_at, updated_at
+		FROM conversations
+		WHERE user_id = $1
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`
+	
+	row := db.QueryRowContext(ctx, query, userID)
+	
+	var c Conversation
+	if err := row.Scan(&c.ID, &c.UserID, &c.Title, &c.IsStarred, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No recent conversation found
+		}
+		return nil, fmt.Errorf("failed to get recent conversation: %w", err)
+	}
+	
+	return &c, nil
+}
+
 // GetConversation retrieves a specific conversation by ID
 func (db *DB) GetConversation(ctx context.Context, id string) (*Conversation, error) {
 	query := `
