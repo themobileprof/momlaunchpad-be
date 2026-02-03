@@ -93,6 +93,7 @@ type User struct {
 	PasswordHash         string     `json:"-"` // Don't expose password hash
 	Name                 *string    `json:"name"`
 	Language             string     `json:"language"`
+	Currency             string     `json:"currency"`
 	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
 	SavingsGoal          *float64   `json:"savings_goal"`
 	IsAdmin              bool       `json:"is_admin"`

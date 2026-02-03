@@ -26,6 +26,7 @@ func NewSavingsHandler(database *db.DB) *SavingsHandler {
 type SavingsSummaryResponse struct {
 	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date,omitempty"`
 	SavingsGoal          float64    `json:"savings_goal"`
+	Currency             string     `json:"currency"`
 	TotalSaved           float64    `json:"total_saved"`
 	ProgressPercentage   float64    `json:"progress_percentage"`
 	DaysUntilDelivery    *int       `json:"days_until_delivery,omitempty"`
@@ -50,6 +51,11 @@ type SavingsEntryResponse struct {
 // UpdateEDDRequest represents an EDD update request
 type UpdateEDDRequest struct {
 	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
+}
+
+// UpdateCurrencyRequest represents a currency update request
+type UpdateCurrencyRequest struct {
+	Currency string `json:"currency" binding:"required,oneof=NGN USD"`
 }
 
 // UpdateSavingsGoalRequest represents a savings goal update request
@@ -94,6 +100,7 @@ func (h *SavingsHandler) GetSavingsSummary(c *gin.Context) {
 	response := SavingsSummaryResponse{
 		ExpectedDeliveryDate: user.ExpectedDeliveryDate,
 		SavingsGoal:          savingsGoal,
+		Currency:             user.Currency,
 		TotalSaved:           totalSaved,
 		ProgressPercentage:   progressPercentage,
 	}
@@ -196,6 +203,24 @@ func (h *SavingsHandler) UpdateSavingsGoal(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Savings goal updated successfully"})
+}
+
+// UpdateCurrency updates the user's preferred currency
+func (h *SavingsHandler) UpdateCurrency(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	var req UpdateCurrencyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.db.UpdateUserCurrency(c.Request.Context(), userID, req.Currency); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update currency"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Currency updated successfully"})
 }
 
 // savingsEntryToResponse converts a db.SavingsEntry to SavingsEntryResponse

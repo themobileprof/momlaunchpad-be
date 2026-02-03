@@ -394,6 +394,7 @@ Authorization: Bearer <token>
 {
   "expected_delivery_date": "2026-09-15T00:00:00Z",
   "savings_goal": 5000.00,
+  "currency": "NGN",
   "total_saved": 400.50,
   "progress_percentage": 8.01,
   "days_until_delivery": 254
@@ -501,6 +502,30 @@ Authorization: Bearer <token>
 ```json
 {
   "message": "Savings goal updated successfully"
+}
+```
+
+#### PUT /api/savings/currency
+Update savings currency (protected).
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Request:**
+```json
+{
+  "currency": "USD"
+}
+```
+
+**Note:** Supported currencies: `NGN`, `USD`.
+
+**Response:**
+```json
+{
+  "message": "Currency updated successfully"
 }
 ```
 

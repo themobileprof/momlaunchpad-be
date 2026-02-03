@@ -31,7 +31,7 @@ func (db *DB) CreateUser(ctx context.Context, user *User) error {
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, 
+		SELECT id, email, password_hash, display_name, preferred_language, currency,
 		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
 		FROM users
 		WHERE email = $1
@@ -40,7 +40,7 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	user := &User{}
 	err := db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.ExpectedDeliveryDate, &user.SavingsGoal,
+		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
 		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -56,7 +56,7 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 // GetUserByID retrieves a user by ID
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, 
+		SELECT id, email, password_hash, display_name, preferred_language, currency,
 		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
 		FROM users
 		WHERE id = $1
@@ -65,7 +65,7 @@ func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	user := &User{}
 	err := db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.ExpectedDeliveryDate, &user.SavingsGoal,
+		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
 		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -601,6 +601,30 @@ func (db *DB) UpdateUserSavingsGoal(ctx context.Context, userID string, goal flo
 	result, err := db.ExecContext(ctx, query, goal, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update savings goal: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// UpdateUserCurrency updates a user's preferred currency
+func (db *DB) UpdateUserCurrency(ctx context.Context, userID, currency string) error {
+	query := `
+		UPDATE users
+		SET currency = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
+
+	result, err := db.ExecContext(ctx, query, currency, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update currency: %w", err)
 	}
 
 	rows, err := result.RowsAffected()

@@ -218,6 +218,7 @@ func main() {
 		savingsGroup.POST("/entries", savingsHandler.CreateSavingsEntry)
 		savingsGroup.PUT("/edd", savingsHandler.UpdateEDD)
 		savingsGroup.PUT("/goal", savingsHandler.UpdateSavingsGoal)
+		savingsGroup.PUT("/currency", savingsHandler.UpdateCurrency)
 	}
 
 	// Subscription routes (protected)
