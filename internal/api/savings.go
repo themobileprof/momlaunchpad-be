@@ -110,7 +110,35 @@ func (h *SavingsHandler) GetSavingsSummary(c *gin.Context) {
 
 // CreateSavingsEntry creates a new savings entry
 func (h *SavingsHandler) CreateSavingsEntry(c *gin.Context) {
-// ...
+	userID := middleware.GetUserID(c)
+	log.Printf("[DEBUG] CreateSavingsEntry called for user: %s", userID)
+
+	var req CreateSavingsEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	entryDate := time.Now()
+	if req.EntryDate != nil {
+		entryDate = *req.EntryDate
+	}
+
+	entry := &db.SavingsEntry{
+		UserID:      userID,
+		Amount:      req.Amount,
+		Description: &req.Description,
+		EntryDate:   entryDate,
+	}
+
+	if err := h.db.CreateSavingsEntry(c.Request.Context(), entry); err != nil {
+		log.Printf("[ERROR] CreateSavingsEntry failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create savings entry"})
+		return
+	}
+
+	response := savingsEntryToResponse(entry)
+	c.JSON(http.StatusCreated, response)
 }
 
 // GetSavingsEntries retrieves all savings entries for the current user

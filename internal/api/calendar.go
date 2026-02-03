@@ -39,6 +39,7 @@ type UpdateReminderRequest struct {
 // ReminderResponse represents a reminder response
 type ReminderResponse struct {
 	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
 	Title        string    `json:"title"`
 	Description  string    `json:"description,omitempty"`
 	ReminderTime time.Time `json:"reminder_time"`
@@ -171,6 +172,7 @@ func reminderToResponse(reminder *db.Reminder) ReminderResponse {
 
 	return ReminderResponse{
 		ID:           reminder.ID,
+		UserID:       reminder.UserID,
 		Title:        reminder.Title,
 		Description:  description,
 		ReminderTime: reminder.ReminderTime,

@@ -199,7 +199,7 @@ SELECT p.id, f.id,
     CASE WHEN f.feature_key = 'chat' THEN 100 ELSE NULL END,
     CASE WHEN f.feature_key = 'chat' THEN 'monthly' ELSE 'unlimited' END
 FROM plans p, features f
-WHERE p.code = 'free' AND f.feature_key IN ('chat', 'calendar')
+WHERE p.code = 'free' AND f.feature_key IN ('chat', 'calendar', 'savings')
 ON CONFLICT (plan_id, feature_id) DO NOTHING;
 
 -- Premium plan features (all unlimited)
