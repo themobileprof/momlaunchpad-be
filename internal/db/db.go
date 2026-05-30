@@ -181,6 +181,25 @@ type DoctorVisit struct {
 	UpdatedAt              time.Time
 }
 
+// VitalReading represents a standalone vital signs log entry.
+type VitalReading struct {
+	ID                     string
+	UserID                 string
+	RecordedAt             time.Time
+	BloodPressureSystolic  *int
+	BloodPressureDiastolic *int
+	WeightKg               *float64
+	HeartRateBpm           *int
+	TemperatureCelsius     *float64
+	FundalHeightCm         *float64
+	FetalHeartRateBpm      *int
+	GestationalAgeWeeks    *int
+	Notes                  *string
+	Source                 string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 // Language represents a supported language
 type Language struct {
 	Code           string    `json:"code"`

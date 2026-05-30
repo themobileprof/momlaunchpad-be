@@ -144,6 +144,7 @@ func main() {
 	conversationHandler := api.NewConversationHandler(database)
 	profileHandler := api.NewProfileHandler(database)
 	doctorVisitHandler := api.NewDoctorVisitHandler(database)
+	vitalsHandler := api.NewVitalsHandler(database)
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -240,6 +241,16 @@ func main() {
 		symptomGroup.GET("/recent", symptomHandler.GetRecentSymptoms)
 		symptomGroup.GET("/stats", symptomHandler.GetSymptomStats)
 		symptomGroup.PUT("/:id/resolve", symptomHandler.MarkSymptomResolved)
+	}
+
+	// Vital readings (manual logging from health tracker)
+	vitalsGroup := router.Group("/api/vitals")
+	vitalsGroup.Use(middleware.JWTAuth(jwtSecret))
+	vitalsGroup.Use(middleware.PerUser(500.0/3600.0, 100))
+	{
+		vitalsGroup.GET("", vitalsHandler.ListVitalReadings)
+		vitalsGroup.POST("", vitalsHandler.CreateVitalReading)
+		vitalsGroup.DELETE("/:id", vitalsHandler.DeleteVitalReading)
 	}
 
 	// Doctor visit records — patient self-service (micro EMR)
