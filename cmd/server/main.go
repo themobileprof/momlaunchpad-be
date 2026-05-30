@@ -21,6 +21,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
+	"github.com/themobileprof/momlaunchpad-be/internal/symptoms"
 	"github.com/themobileprof/momlaunchpad-be/internal/welcome"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
@@ -90,6 +91,28 @@ func main() {
 		log.Println("✅ Initialize DeepSeek LLM client")
 	}
 
+	var welcomeGemini llm.Client
+	if geminiAPIKey != "" {
+		welcomeGemini = gemini.NewHTTPClient(gemini.Config{APIKey: geminiAPIKey})
+	}
+
+	var welcomeDeepseek llm.Client
+	if deepseekAPIKey != "" {
+		welcomeDeepseek = deepseek.NewHTTPClient(deepseek.Config{
+			APIKey: deepseekAPIKey,
+		})
+	}
+
+	symptomSummarizer := symptoms.NewSummarizer(welcomeGemini, welcomeDeepseek)
+	switch {
+	case welcomeGemini != nil && welcomeDeepseek != nil:
+		log.Println("✅ Symptom summaries: Gemini primary, DeepSeek fallback")
+	case welcomeGemini != nil || welcomeDeepseek != nil:
+		log.Println("✅ Symptom summaries enabled")
+	default:
+		log.Println("⚠️  No LLM keys for symptom summaries — using template fallback")
+	}
+
 	promptBuilder := prompt.NewBuilder()
 	calSuggester := calendar.NewSuggester()
 	langMgr := language.NewManager()
@@ -115,6 +138,7 @@ func main() {
 		calSuggester,
 		langMgr,
 		database,
+		symptomSummarizer,
 	)
 
 	// Load enabled languages from database
@@ -141,23 +165,10 @@ func main() {
 	calendarHandler := api.NewCalendarHandler(database)
 	savingsHandler := api.NewSavingsHandler(database)
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
-	symptomHandler := api.NewSymptomHandler(database)
 	conversationHandler := api.NewConversationHandler(database)
 	profileHandler := api.NewProfileHandler(database)
 	doctorVisitHandler := api.NewDoctorVisitHandler(database)
 	vitalsHandler := api.NewVitalsHandler(database)
-
-	var welcomeGemini llm.Client
-	if geminiAPIKey != "" {
-		welcomeGemini = gemini.NewHTTPClient(gemini.Config{APIKey: geminiAPIKey})
-	}
-
-	var welcomeDeepseek llm.Client
-	if deepseekAPIKey != "" {
-		welcomeDeepseek = deepseek.NewHTTPClient(deepseek.Config{
-			APIKey: deepseekAPIKey,
-		})
-	}
 
 	switch {
 	case welcomeGemini != nil && welcomeDeepseek != nil:
@@ -172,6 +183,7 @@ func main() {
 
 	welcomeSvc := welcome.NewService(database, welcomeGemini, welcomeDeepseek)
 	welcomeHandler := api.NewWelcomeHandler(welcomeSvc)
+	symptomHandler := api.NewSymptomHandler(database, symptomSummarizer)
 
 	chatHandler := ws.NewChatHandler(
 		chatEngine,

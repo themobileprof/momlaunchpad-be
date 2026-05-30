@@ -20,6 +20,11 @@ import (
 
 var googleHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
+// googleTokenInfoURL builds the Google ID token verification URL (overridable in tests).
+var googleTokenInfoURL = func(idToken string) string {
+	return "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken
+}
+
 // OAuthConfig holds OAuth provider configurations
 type OAuthConfig struct {
 	GoogleConfig *oauth2.Config
@@ -324,9 +329,7 @@ func (h *OAuthHandler) verifyGoogleIDToken(idToken string) (*GoogleUserInfo, err
 		return nil, fmt.Errorf("GOOGLE_ALLOWED_CLIENT_IDS not configured")
 	}
 
-	// Call Google's tokeninfo endpoint to verify the token
-	url := "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken
-	resp, err := googleHTTPClient.Get(url)
+	resp, err := googleHTTPClient.Get(googleTokenInfoURL(idToken))
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}

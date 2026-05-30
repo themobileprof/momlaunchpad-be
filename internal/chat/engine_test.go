@@ -22,6 +22,7 @@ func TestEngineCreation(t *testing.T) {
 		&mockCalSuggester{},
 		&mockLangManager{},
 		&mockDB{},
+		nil,
 	)
 	if engine == nil {
 		t.Fatal("expected engine to be created")
@@ -114,7 +115,7 @@ type mockDB struct {
 
 func (m *mockDB) SaveMessage(ctx context.Context, userID, conversationID, role, content string) (*db.Message, error) {
 	m.messages = append(m.messages, userID+":"+conversationID+":"+role+":"+content)
-	return &db.Message{ConversationID: conversationID}, nil
+	return &db.Message{ID: "mock-message-id", ConversationID: conversationID}, nil
 }
 func (m *mockDB) CreateConversation(ctx context.Context, userID string, title *string) (*db.Conversation, error) {
 	return &db.Conversation{ID: "mock-conv-id"}, nil
@@ -126,7 +127,7 @@ func (m *mockDB) SaveOrUpdateFact(ctx context.Context, userID, key, value string
 	m.facts = append(m.facts, key+":"+value)
 	return &db.UserFact{}, nil
 }
-func (m *mockDB) SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error) {
+func (m *mockDB) SaveSymptom(ctx context.Context, input db.SymptomInsert) (string, error) {
 	return "mock-symptom-id", nil
 }
 func (m *mockDB) GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error) {
@@ -194,6 +195,7 @@ func TestEngine_FirstMessageBypassesSmallTalk(t *testing.T) {
 		&mockCalSuggester{},
 		&mockLangManager{},
 		&mockDB{},
+		nil,
 	)
 	responder := &mockResponder{}
 
@@ -228,6 +230,7 @@ func TestEngine_FollowUpSmallTalkUsesCannedResponse(t *testing.T) {
 		&mockCalSuggester{},
 		&mockLangManager{},
 		&mockDB{messages: []string{"existing1", "existing2"}},
+		nil,
 	)
 	responder := &mockResponder{}
 

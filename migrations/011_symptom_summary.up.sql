@@ -1,0 +1,1 @@
+ALTER TABLE symptoms ADD COLUMN IF NOT EXISTS summary TEXT;

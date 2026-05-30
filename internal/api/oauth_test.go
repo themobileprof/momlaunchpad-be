@@ -1,7 +1,15 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/gin-gonic/gin"
+	"github.com/themobileprof/momlaunchpad-be/internal/db"
 )
 
 // TestGenerateUsernameFromEmail tests username generation from email
@@ -43,30 +51,284 @@ func TestGenerateUsernameFromEmail(t *testing.T) {
 	}
 }
 
-// TestMobileOAuthFlow tests the mobile ID token verification flow
-func TestMobileOAuthFlow(t *testing.T) {
-	t.Run("mobile app submits valid ID token", func(t *testing.T) {
-		// Flow:
-		// 1. Flutter app uses google_sign_in package
-		// 2. User signs in, app gets ID token
-		// 3. App POSTs to /api/auth/google/token with {"id_token": "..."}
-		// 4. Backend verifies token with Google's tokeninfo endpoint
-		// 5. Backend finds/creates user by email (same as web flow)
-		// 6. Backend returns JWT token
+const testWebClientID = "web-client-id.apps.googleusercontent.com"
 
-		// This test would mock the Google tokeninfo endpoint response
-		t.Skip("Requires HTTP client mocking for tokeninfo endpoint")
-	})
+func mockGoogleTokenInfoServer(t *testing.T, body string, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("id_token") == "" {
+			http.Error(w, "missing token", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+}
 
-	t.Run("invalid ID token rejected", func(t *testing.T) {
-		// Test that invalid/expired tokens are rejected
-		t.Skip("Requires HTTP client mocking")
-	})
+func withMockGoogleTokenInfo(t *testing.T, server *httptest.Server) {
+	t.Helper()
+	prev := googleTokenInfoURL
+	googleTokenInfoURL = func(idToken string) string {
+		return server.URL + "?id_token=" + idToken
+	}
+	t.Cleanup(func() { googleTokenInfoURL = prev })
+}
 
-	t.Run("token audience mismatch rejected", func(t *testing.T) {
-		// Test that tokens meant for different apps are rejected
-		t.Skip("Requires HTTP client mocking")
-	})
+func validGoogleTokenInfoJSON(aud, email string, verified bool) string {
+	verifiedStr := "false"
+	if verified {
+		verifiedStr = "true"
+	}
+	payload := map[string]string{
+		"aud":            aud,
+		"sub":            "google-sub-123",
+		"email":          email,
+		"email_verified": verifiedStr,
+		"name":           "Jane Doe",
+	}
+	b, _ := json.Marshal(payload)
+	return string(b)
+}
+
+func TestVerifyGoogleIDToken(t *testing.T) {
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+
+	server := mockGoogleTokenInfoServer(t, validGoogleTokenInfoJSON(testWebClientID, "jane@example.com", true), http.StatusOK)
+	withMockGoogleTokenInfo(t, server)
+
+	h := &OAuthHandler{}
+	info, err := h.verifyGoogleIDToken("fake-token")
+	if err != nil {
+		t.Fatalf("verifyGoogleIDToken: %v", err)
+	}
+	if info.Email != "jane@example.com" || !info.VerifiedEmail {
+		t.Fatalf("unexpected user info: %+v", info)
+	}
+}
+
+func TestVerifyGoogleIDToken_AudienceMismatch(t *testing.T) {
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+
+	server := mockGoogleTokenInfoServer(t, validGoogleTokenInfoJSON("wrong-client.apps.googleusercontent.com", "jane@example.com", true), http.StatusOK)
+	withMockGoogleTokenInfo(t, server)
+
+	h := &OAuthHandler{}
+	_, err := h.verifyGoogleIDToken("fake-token")
+	if err == nil {
+		t.Fatal("expected audience mismatch error")
+	}
+}
+
+func TestVerifyGoogleIDToken_NotConfigured(t *testing.T) {
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", "")
+
+	h := &OAuthHandler{}
+	_, err := h.verifyGoogleIDToken("fake-token")
+	if err == nil {
+		t.Fatal("expected configuration error")
+	}
+}
+
+func TestGoogleTokenAuth_MissingIDToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+
+	r := gin.New()
+	r.POST("/google/token", NewOAuthHandler(database).GoogleTokenAuth)
+
+	req, err := jsonRequest(http.MethodPost, "/google/token", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoogleTokenAuth_InvalidToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+
+	server := mockGoogleTokenInfoServer(t, `{"error":"invalid_token"}`, http.StatusBadRequest)
+	withMockGoogleTokenInfo(t, server)
+
+	database, mock := newMockDB(t)
+	r := gin.New()
+	r.POST("/google/token", NewOAuthHandler(database).GoogleTokenAuth)
+
+	req, _ := jsonRequest(http.MethodPost, "/google/token", map[string]string{"id_token": "bad"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoogleTokenAuth_UnverifiedEmail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+
+	server := mockGoogleTokenInfoServer(t, validGoogleTokenInfoJSON(testWebClientID, "jane@example.com", false), http.StatusOK)
+	withMockGoogleTokenInfo(t, server)
+
+	database, mock := newMockDB(t)
+	r := gin.New()
+	r.POST("/google/token", NewOAuthHandler(database).GoogleTokenAuth)
+
+	req, _ := jsonRequest(http.MethodPost, "/google/token", map[string]string{"id_token": "token"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoogleTokenAuth_ExistingUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+	t.Setenv("JWT_SECRET", "test-jwt-secret")
+
+	server := mockGoogleTokenInfoServer(t, validGoogleTokenInfoJSON(testWebClientID, "jane@example.com", true), http.StatusOK)
+	withMockGoogleTokenInfo(t, server)
+
+	database, mock := newMockDB(t)
+	userID := "11111111-1111-1111-1111-111111111111"
+	expectUserByEmail(mock, "jane@example.com", userID)
+	mock.ExpectExec(`INSERT INTO oauth_providers`).
+		WithArgs(userID, "google", "google-sub-123", "jane@example.com").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	r := gin.New()
+	r.POST("/google/token", NewOAuthHandler(database).GoogleTokenAuth)
+
+	req, _ := jsonRequest(http.MethodPost, "/google/token", map[string]string{"id_token": "valid-token"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Token string `json:"token"`
+		User  struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+			Name  string `json:"name"`
+		} `json:"user"`
+	}
+	decodeJSONBody(t, w, &resp)
+	if resp.Token == "" {
+		t.Fatal("expected JWT token in response")
+	}
+	if resp.User.ID != userID || resp.User.Email != "jane@example.com" {
+		t.Fatalf("unexpected user payload: %+v", resp.User)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoogleTokenAuth_CreatesNewUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOOGLE_ALLOWED_CLIENT_IDS", testWebClientID)
+	t.Setenv("JWT_SECRET", "test-jwt-secret")
+
+	server := mockGoogleTokenInfoServer(t, validGoogleTokenInfoJSON(testWebClientID, "new@example.com", true), http.StatusOK)
+	withMockGoogleTokenInfo(t, server)
+
+	database, mock := newMockDB(t)
+	newUserID := "22222222-2222-2222-2222-222222222222"
+	now := time.Now()
+
+	expectUserByEmail(mock, "new@example.com", "")
+	mock.ExpectQuery(`INSERT INTO users`).
+		WithArgs("new@example.com", "Jane Doe", "en", false, "google").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(newUserID, now, now))
+	mock.ExpectExec(`INSERT INTO oauth_providers`).
+		WithArgs(newUserID, "google", "google-sub-123", "new@example.com").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	r := gin.New()
+	r.POST("/google/token", NewOAuthHandler(database).GoogleTokenAuth)
+
+	req, _ := jsonRequest(http.MethodPost, "/google/token", map[string]string{"id_token": "valid-token"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoogleCallback_InvalidState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+
+	r := gin.New()
+	r.GET("/google/callback", NewOAuthHandler(database).GoogleCallback)
+
+	req := httptest.NewRequest(http.MethodGet, "/google/callback?state=wrong&code=abc", nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "expected"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppleLogin_NotImplemented(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+
+	r := gin.New()
+	r.GET("/apple", NewOAuthHandler(database).AppleLogin)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apple", nil))
+
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotImplemented)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOauthDisplayName(t *testing.T) {
+	name := "DB Name"
+	user := &db.User{Email: "user@example.com", Name: &name}
+
+	if got := oauthDisplayName("Google Name", user); got != "Google Name" {
+		t.Fatalf("got %q", got)
+	}
+	if got := oauthDisplayName("", user); got != "DB Name" {
+		t.Fatalf("got %q", got)
+	}
+	if got := oauthDisplayName("", &db.User{Email: "local@example.com"}); got != "local" {
+		t.Fatalf("got %q", got)
+	}
 }
 
 // TestEmailBasedUserLinking tests that users are linked across providers by email

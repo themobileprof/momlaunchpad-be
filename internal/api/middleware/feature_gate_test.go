@@ -60,7 +60,7 @@ func TestRequireFeature(t *testing.T) {
 			r := gin.New()
 			r.Use(func(c *gin.Context) {
 				if tt.userID != nil {
-					c.Set("userID", tt.userID)
+					c.Set("user_id", tt.userID)
 				}
 				c.Next()
 			})
@@ -111,7 +111,7 @@ func TestQuotaCheckMiddleware(t *testing.T) {
 
 			if tt.userID != "" {
 				r.Use(func(c *gin.Context) {
-					c.Set("userID", tt.userID)
+					c.Set("user_id", tt.userID)
 					c.Next()
 				})
 			}

@@ -44,17 +44,18 @@ type ProcessRequest struct {
 
 // Engine handles core conversation logic independent of transport
 type Engine struct {
-	classifier     ClassifierInterface
-	memoryManager  MemoryInterface
-	promptBuilder  PromptInterface
-	llmClient      llm.Client
-	calSuggester   CalendarInterface
-	langManager    LanguageInterface
-	db             DBInterface
-	convManager    *conversation.Manager
-	symptomTracker *symptoms.Tracker
-	circuitBreaker *circuitbreaker.CircuitBreaker
-	aiTimeout      time.Duration
+	classifier        ClassifierInterface
+	memoryManager     MemoryInterface
+	promptBuilder     PromptInterface
+	llmClient         llm.Client
+	calSuggester      CalendarInterface
+	langManager       LanguageInterface
+	db                DBInterface
+	convManager       *conversation.Manager
+	symptomTracker    *symptoms.Tracker
+	symptomSummarizer *symptoms.Summarizer
+	circuitBreaker    *circuitbreaker.CircuitBreaker
+	aiTimeout         time.Duration
 }
 
 // Interfaces for dependencies
@@ -84,7 +85,7 @@ type DBInterface interface {
 	SaveMessage(ctx context.Context, userID, conversationID, role, content string) (*db.Message, error)
 	CreateConversation(ctx context.Context, userID string, title *string) (*db.Conversation, error)
 	GetUserFacts(ctx context.Context, userID string) ([]db.UserFact, error)
-	SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error)
+	SaveSymptom(ctx context.Context, input db.SymptomInsert) (string, error)
 	GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error)
 	SaveOrUpdateFact(ctx context.Context, userID, key, value string, confidence float64) (*db.UserFact, error)
 	GetSystemSetting(ctx context.Context, key string) (*db.SystemSetting, error)
@@ -103,19 +104,21 @@ func NewEngine(
 	cal CalendarInterface,
 	lm LanguageInterface,
 	database DBInterface,
+	symptomSummarizer *symptoms.Summarizer,
 ) *Engine {
 	return &Engine{
-		classifier:     cls,
-		memoryManager:  mem,
-		promptBuilder:  pb,
-		llmClient:      client,
-		calSuggester:   cal,
-		langManager:    lm,
-		db:             database,
-		convManager:    conversation.NewManager(),
-		symptomTracker: symptoms.NewTracker(),
-		circuitBreaker: circuitbreaker.NewCircuitBreaker(5, 5*time.Minute),
-		aiTimeout:      30 * time.Second,
+		classifier:        cls,
+		memoryManager:     mem,
+		promptBuilder:     pb,
+		llmClient:         client,
+		calSuggester:      cal,
+		langManager:       lm,
+		db:                database,
+		convManager:       conversation.NewManager(),
+		symptomTracker:    symptoms.NewTracker(),
+		symptomSummarizer: symptomSummarizer,
+		circuitBreaker:    circuitbreaker.NewCircuitBreaker(5, 5*time.Minute),
+		aiTimeout:         30 * time.Second,
 	}
 }
 
@@ -163,8 +166,12 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 	result := e.classifier.Classify(req.Message, req.Language)
 	log.Printf("Intent classified: %s (confidence: %.2f)", result.Intent, result.Confidence)
 
-	if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "user", req.Message); err != nil {
+	userMsg, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "user", req.Message)
+	if err != nil {
 		return conversationID, fmt.Errorf("failed to save message: %w", err)
+	}
+	if userMsg == nil {
+		return conversationID, fmt.Errorf("failed to save message: empty result")
 	}
 
 	e.memoryManager.AddMessage(req.UserID, memory.Message{
@@ -207,20 +214,33 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		if len(extractedSymptoms) > 0 {
 			log.Printf("Extracted %d symptom(s) from message", len(extractedSymptoms))
 			for _, symptom := range extractedSymptoms {
-				symptomID, err := e.db.SaveSymptom(
-					ctx,
-					req.UserID,
-					symptom.Type,
-					symptom.Description,
-					symptom.Severity,
-					symptom.Frequency,
-					symptom.OnsetTime,
-					symptom.AssociatedSymptoms,
-				)
+				summary := symptoms.FallbackSummary(symptom.Type, symptom.Description, symptom.Severity)
+				if e.symptomSummarizer != nil {
+					summary = e.symptomSummarizer.Summarize(
+						ctx,
+						symptom.Type,
+						symptom.Description,
+						symptom.Severity,
+						symptom.Frequency,
+					)
+				}
+
+				symptomID, err := e.db.SaveSymptom(ctx, db.SymptomInsert{
+					UserID:             req.UserID,
+					ConversationID:     conversationID,
+					MessageID:          userMsg.ID,
+					SymptomType:        symptom.Type,
+					Description:        symptom.Description,
+					Summary:            summary,
+					Severity:           symptom.Severity,
+					Frequency:          symptom.Frequency,
+					OnsetTime:          symptom.OnsetTime,
+					AssociatedSymptoms: symptom.AssociatedSymptoms,
+				})
 				if err != nil {
 					log.Printf("Warning: failed to save symptom: %v", err)
 				} else {
-					log.Printf("Saved symptom: %s (ID: %s)", symptom.Type, symptomID)
+					log.Printf("Saved symptom: %s (ID: %s, conversation: %s)", symptom.Type, symptomID, conversationID)
 				}
 			}
 		}
@@ -322,7 +342,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 
 	log.Printf("Calling LLM API for user=%s", req.UserID)
 	var assistantMsg string
-	err := e.circuitBreaker.Call(func() error {
+	err = e.circuitBreaker.Call(func() error {
 		response, err := e.llmClient.ChatCompletion(ctxWithTimeout, chatReq)
 		if err != nil {
 			log.Printf("LLM API error: %v", err)

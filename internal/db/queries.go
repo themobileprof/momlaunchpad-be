@@ -186,16 +186,50 @@ func (db *DB) SaveOrUpdateFact(ctx context.Context, userID, key, value string, c
 	return fact, nil
 }
 
-// SaveSymptom saves a new symptom record
-func (db *DB) SaveSymptom(ctx context.Context, userID, symptomType, description, severity, frequency, onsetTime string, associatedSymptoms []string) (string, error) {
+// SymptomInsert captures a symptom logged from chat with source links and summary.
+type SymptomInsert struct {
+	UserID             string
+	ConversationID     string
+	MessageID          string
+	SymptomType        string
+	Description        string
+	Summary            string
+	Severity           string
+	Frequency          string
+	OnsetTime          string
+	AssociatedSymptoms []string
+}
+
+// SaveSymptom saves a new symptom record linked to the source chat message when available.
+func (db *DB) SaveSymptom(ctx context.Context, input SymptomInsert) (string, error) {
 	query := `
-		INSERT INTO symptoms (user_id, symptom_type, description, severity, frequency, onset_time, associated_symptoms)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO symptoms (
+			user_id, conversation_id, message_id, symptom_type, description, summary,
+			severity, frequency, onset_time, associated_symptoms
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id
 	`
 
+	convID := sql.NullString{String: input.ConversationID, Valid: input.ConversationID != ""}
+	msgID := sql.NullString{String: input.MessageID, Valid: input.MessageID != ""}
+	summary := sql.NullString{String: input.Summary, Valid: input.Summary != ""}
+
 	var symptomID string
-	err := db.QueryRowContext(ctx, query, userID, symptomType, description, severity, frequency, onsetTime, pq.Array(associatedSymptoms)).Scan(&symptomID)
+	err := db.QueryRowContext(
+		ctx,
+		query,
+		input.UserID,
+		convID,
+		msgID,
+		input.SymptomType,
+		input.Description,
+		summary,
+		input.Severity,
+		input.Frequency,
+		input.OnsetTime,
+		pq.Array(input.AssociatedSymptoms),
+	).Scan(&symptomID)
 	if err != nil {
 		return "", fmt.Errorf("failed to save symptom: %w", err)
 	}
@@ -206,8 +240,9 @@ func (db *DB) SaveSymptom(ctx context.Context, userID, symptomType, description,
 // GetRecentSymptoms retrieves recent symptoms for a user
 func (db *DB) GetRecentSymptoms(ctx context.Context, userID string, limit int) ([]map[string]interface{}, error) {
 	query := `
-		SELECT id, symptom_type, description, severity, frequency, onset_time, 
-		       associated_symptoms, is_resolved, reported_at, resolved_at
+		SELECT id, symptom_type, description, summary, severity, frequency, onset_time, 
+		       associated_symptoms, is_resolved, reported_at, resolved_at,
+		       conversation_id, message_id
 		FROM symptoms
 		WHERE user_id = $1
 		ORDER BY reported_at DESC
@@ -222,36 +257,9 @@ func (db *DB) GetRecentSymptoms(ctx context.Context, userID string, limit int) (
 
 	symptoms := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var (
-			id                 string
-			symptomType        string
-			description        string
-			severity           string
-			frequency          string
-			onsetTime          string
-			associatedSymptoms []string
-			isResolved         bool
-			reportedAt         time.Time
-			resolvedAt         *time.Time
-		)
-
-		err := rows.Scan(&id, &symptomType, &description, &severity, &frequency, &onsetTime,
-			&associatedSymptoms, &isResolved, &reportedAt, &resolvedAt)
+		symptom, err := scanSymptomRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan symptom: %w", err)
-		}
-
-		symptom := map[string]interface{}{
-			"id":                  id,
-			"symptom_type":        symptomType,
-			"description":         description,
-			"severity":            severity,
-			"frequency":           frequency,
-			"onset_time":          onsetTime,
-			"associated_symptoms": associatedSymptoms,
-			"is_resolved":         isResolved,
-			"reported_at":         reportedAt,
-			"resolved_at":         resolvedAt,
+			return nil, err
 		}
 		symptoms = append(symptoms, symptom)
 	}
@@ -266,8 +274,9 @@ func (db *DB) GetSymptomHistory(ctx context.Context, userID string, symptomType 
 
 	if symptomType != "" {
 		query = `
-			SELECT id, symptom_type, description, severity, frequency, onset_time, 
-			       associated_symptoms, is_resolved, reported_at, resolved_at
+			SELECT id, symptom_type, description, summary, severity, frequency, onset_time, 
+			       associated_symptoms, is_resolved, reported_at, resolved_at,
+			       conversation_id, message_id
 			FROM symptoms
 			WHERE user_id = $1 AND symptom_type = $2
 			ORDER BY reported_at DESC
@@ -276,8 +285,9 @@ func (db *DB) GetSymptomHistory(ctx context.Context, userID string, symptomType 
 		args = []interface{}{userID, symptomType, limit}
 	} else {
 		query = `
-			SELECT id, symptom_type, description, severity, frequency, onset_time, 
-			       associated_symptoms, is_resolved, reported_at, resolved_at
+			SELECT id, symptom_type, description, summary, severity, frequency, onset_time, 
+			       associated_symptoms, is_resolved, reported_at, resolved_at,
+			       conversation_id, message_id
 			FROM symptoms
 			WHERE user_id = $1
 			ORDER BY reported_at DESC
@@ -294,36 +304,9 @@ func (db *DB) GetSymptomHistory(ctx context.Context, userID string, symptomType 
 
 	symptoms := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var (
-			id                 string
-			symptomType        string
-			description        string
-			severity           string
-			frequency          string
-			onsetTime          string
-			associatedSymptoms []string
-			isResolved         bool
-			reportedAt         time.Time
-			resolvedAt         *time.Time
-		)
-
-		err := rows.Scan(&id, &symptomType, &description, &severity, &frequency, &onsetTime,
-			pq.Array(&associatedSymptoms), &isResolved, &reportedAt, &resolvedAt)
+		symptom, err := scanSymptomRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan symptom: %w", err)
-		}
-
-		symptom := map[string]interface{}{
-			"id":                  id,
-			"symptom_type":        symptomType,
-			"description":         description,
-			"severity":            severity,
-			"frequency":           frequency,
-			"onset_time":          onsetTime,
-			"associated_symptoms": associatedSymptoms,
-			"is_resolved":         isResolved,
-			"reported_at":         reportedAt,
-			"resolved_at":         resolvedAt,
+			return nil, err
 		}
 		symptoms = append(symptoms, symptom)
 	}
@@ -331,17 +314,89 @@ func (db *DB) GetSymptomHistory(ctx context.Context, userID string, symptomType 
 	return symptoms, nil
 }
 
-// MarkSymptomResolved marks a symptom as resolved
+func scanSymptomRow(rows *sql.Rows) (map[string]interface{}, error) {
+	var (
+		id                 string
+		symptomType        string
+		description        string
+		summary            sql.NullString
+		severity           sql.NullString
+		frequency          sql.NullString
+		onsetTime          sql.NullString
+		associatedSymptoms []string
+		isResolved         bool
+		reportedAt         time.Time
+		resolvedAt         *time.Time
+		conversationID     sql.NullString
+		messageID          sql.NullString
+	)
+
+	err := rows.Scan(
+		&id, &symptomType, &description, &summary, &severity, &frequency, &onsetTime,
+		pq.Array(&associatedSymptoms), &isResolved, &reportedAt, &resolvedAt,
+		&conversationID, &messageID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan symptom: %w", err)
+	}
+
+	return map[string]interface{}{
+		"id":                  id,
+		"symptom_type":        symptomType,
+		"description":         description,
+		"summary":             nullStringValue(summary),
+		"severity":            nullStringValue(severity),
+		"frequency":           nullStringValue(frequency),
+		"onset_time":          nullStringValue(onsetTime),
+		"associated_symptoms": associatedSymptoms,
+		"is_resolved":         isResolved,
+		"reported_at":         reportedAt,
+		"resolved_at":         resolvedAt,
+		"conversation_id":     nullStringValue(conversationID),
+		"message_id":          nullStringValue(messageID),
+	}, nil
+}
+
+func nullStringValue(ns sql.NullString) interface{} {
+	if ns.Valid {
+		return ns.String
+	}
+	return nil
+}
+
+// UpdateSymptomSummary stores a one-sentence AI summary for display in the health tracker.
+func (db *DB) UpdateSymptomSummary(ctx context.Context, symptomID, summary string) error {
+	query := `
+		UPDATE symptoms
+		SET summary = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`
+	_, err := db.ExecContext(ctx, query, symptomID, summary)
+	if err != nil {
+		return fmt.Errorf("failed to update symptom summary: %w", err)
+	}
+	return nil
+}
+
+// MarkSymptomResolved marks a symptom as resolved.
 func (db *DB) MarkSymptomResolved(ctx context.Context, symptomID, userID string) error {
 	query := `
 		UPDATE symptoms 
 		SET is_resolved = true, resolved_at = CURRENT_TIMESTAMP
-		WHERE id = $1 AND user_id = $2
+		WHERE id = $1 AND user_id = $2 AND is_resolved = false
 	`
 
-	_, err := db.ExecContext(ctx, query, symptomID, userID)
+	result, err := db.ExecContext(ctx, query, symptomID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to mark symptom resolved: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check symptom resolve result: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
 	}
 
 	return nil

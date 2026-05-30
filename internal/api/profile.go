@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -183,8 +184,11 @@ func (h *ProfileHandler) saveProfile(
 	}
 
 	// Profile changes affect welcome personalization — invalidate today's cache.
-	cacheDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	_ = h.db.DeleteWelcomeMessage(ctx, userID, cacheDate)
+	y, m, d := now.UTC().Date()
+	cacheDate := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	if err := h.db.DeleteWelcomeMessage(ctx, userID, cacheDate); err != nil {
+		return nil, nil, fmt.Errorf("failed to invalidate welcome message: %w", err)
+	}
 
 	return user, facts, nil
 }

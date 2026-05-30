@@ -1,22 +1,29 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
+	"github.com/themobileprof/momlaunchpad-be/internal/symptoms"
 )
+
+const maxSummariesPerRequest = 2
 
 // SymptomHandler handles symptom history API endpoints
 type SymptomHandler struct {
-	db *db.DB
+	db         *db.DB
+	summarizer *symptoms.Summarizer
 }
 
 // NewSymptomHandler creates a new symptom handler
-func NewSymptomHandler(database *db.DB) *SymptomHandler {
+func NewSymptomHandler(database *db.DB, summarizer *symptoms.Summarizer) *SymptomHandler {
 	return &SymptomHandler{
-		db: database,
+		db:         database,
+		summarizer: summarizer,
 	}
 }
 
@@ -43,6 +50,8 @@ func (h *SymptomHandler) GetSymptomHistory(c *gin.Context) {
 		return
 	}
 
+	h.ensureSummaries(c.Request.Context(), symptoms)
+
 	c.JSON(http.StatusOK, gin.H{
 		"symptoms": symptoms,
 		"count":    len(symptoms),
@@ -64,14 +73,16 @@ func (h *SymptomHandler) GetRecentSymptoms(c *gin.Context) {
 		limit = 10
 	}
 
-	symptoms, err := h.db.GetRecentSymptoms(c.Request.Context(), userID.(string), limit)
+	records, err := h.db.GetRecentSymptoms(c.Request.Context(), userID.(string), limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve symptoms"})
 		return
 	}
 
+	h.ensureSummaries(c.Request.Context(), records)
+
 	c.JSON(http.StatusOK, gin.H{
-		"symptoms": symptoms,
+		"symptoms": records,
 	})
 }
 
@@ -92,6 +103,10 @@ func (h *SymptomHandler) MarkSymptomResolved(c *gin.Context) {
 
 	err := h.db.MarkSymptomResolved(c.Request.Context(), symptomID, userID.(string))
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Symptom not found or already resolved"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark symptom as resolved"})
 		return
 	}
@@ -148,4 +163,48 @@ func (h *SymptomHandler) GetSymptomStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+func (h *SymptomHandler) ensureSummaries(ctx context.Context, records []map[string]interface{}) {
+	llmAttempts := 0
+	for _, record := range records {
+		if summary, ok := record["summary"].(string); ok && summary != "" {
+			continue
+		}
+
+		id, _ := record["id"].(string)
+		symptomType, _ := record["symptom_type"].(string)
+		description, _ := record["description"].(string)
+		severity := stringField(record["severity"])
+		frequency := stringField(record["frequency"])
+		if id == "" || description == "" {
+			continue
+		}
+
+		var summary string
+		if h.summarizer != nil && llmAttempts < maxSummariesPerRequest {
+			var usedLLM bool
+			summary, usedLLM = h.summarizer.TrySummarize(
+				ctx, symptomType, description, severity, frequency,
+			)
+			if usedLLM {
+				llmAttempts++
+			}
+		} else {
+			summary = symptoms.FallbackSummary(symptomType, description, severity)
+		}
+
+		record["summary"] = summary
+		_ = h.db.UpdateSymptomSummary(ctx, id, summary)
+	}
+}
+
+func stringField(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return ""
 }
