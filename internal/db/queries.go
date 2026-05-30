@@ -170,7 +170,7 @@ func (db *DB) SaveOrUpdateFact(ctx context.Context, userID, key, value string, c
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (user_id, key) 
 		DO UPDATE SET value = $3, confidence = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE user_facts.confidence < $4
+		WHERE user_facts.confidence <= $4
 		RETURNING id, user_id, key, value, confidence, created_at, updated_at
 	`
 
