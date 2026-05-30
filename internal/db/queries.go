@@ -15,6 +15,42 @@ var (
 	ErrAlreadyExists = errors.New("record already exists")
 )
 
+const userSelectSQL = `
+	SELECT id, email, password_hash, display_name, preferred_language, currency,
+	       pregnancy_week, pregnancy_start_date, expected_delivery_date,
+	       is_first_pregnancy, primary_concern, diet_preference,
+	       savings_goal, is_admin, onboarding_completed_at, created_at, updated_at
+	FROM users`
+
+func scanUser(scanner interface {
+	Scan(dest ...any) error
+}) (*User, error) {
+	user := &User{}
+	err := scanner.Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
+		&user.Language, &user.Currency, &user.PregnancyWeek, &user.PregnancyStartDate,
+		&user.ExpectedDeliveryDate, &user.IsFirstPregnancy, &user.PrimaryConcern,
+		&user.DietPreference, &user.SavingsGoal, &user.IsAdmin, &user.OnboardingCompletedAt,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UserProfileUpdate contains editable profile fields.
+type UserProfileUpdate struct {
+	Name                 *string
+	Language             *string
+	PregnancyWeek        *int
+	PregnancyStartDate   *time.Time
+	ExpectedDeliveryDate *time.Time
+	IsFirstPregnancy     *bool
+	PrimaryConcern       *string
+	DietPreference       *string
+}
+
 // CreateUser creates a new user
 func (db *DB) CreateUser(ctx context.Context, user *User) error {
 	query := `
@@ -43,20 +79,11 @@ func (db *DB) CreateOAuthUser(ctx context.Context, user *User, authProvider stri
 
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, currency,
-		       expected_delivery_date, savings_goal, is_admin, onboarding_completed_at,
-		       created_at, updated_at
-		FROM users
+	query := userSelectSQL + `
 		WHERE email = $1
 	`
 
-	user := &User{}
-	err := db.QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
-		&user.IsAdmin, &user.OnboardingCompletedAt, &user.CreatedAt, &user.UpdatedAt,
-	)
+	user, err := scanUser(db.QueryRowContext(ctx, query, email))
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -69,20 +96,11 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 
 // GetUserByID retrieves a user by ID
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
-	query := `
-		SELECT id, email, password_hash, display_name, preferred_language, currency,
-		       expected_delivery_date, savings_goal, is_admin, onboarding_completed_at,
-		       created_at, updated_at
-		FROM users
+	query := userSelectSQL + `
 		WHERE id = $1
 	`
 
-	user := &User{}
-	err := db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
-		&user.IsAdmin, &user.OnboardingCompletedAt, &user.CreatedAt, &user.UpdatedAt,
-	)
+	user, err := scanUser(db.QueryRowContext(ctx, query, id))
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -607,15 +625,39 @@ func (db *DB) UpdateUserEDD(ctx context.Context, userID string, edd *time.Time) 
 
 // UpdateUserProfile updates display name and preferred language.
 func (db *DB) UpdateUserProfile(ctx context.Context, userID string, name, language *string) error {
+	return db.UpdateUserProfileDetails(ctx, userID, UserProfileUpdate{
+		Name:     name,
+		Language: language,
+	})
+}
+
+// UpdateUserProfileDetails updates editable profile and pregnancy fields.
+func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, update UserProfileUpdate) error {
 	query := `
 		UPDATE users
 		SET display_name = COALESCE($1, display_name),
 		    preferred_language = COALESCE($2, preferred_language),
+		    pregnancy_week = COALESCE($3, pregnancy_week),
+		    pregnancy_start_date = COALESCE($4, pregnancy_start_date),
+		    expected_delivery_date = COALESCE($5, expected_delivery_date),
+		    is_first_pregnancy = COALESCE($6, is_first_pregnancy),
+		    primary_concern = COALESCE($7, primary_concern),
+		    diet_preference = COALESCE($8, diet_preference),
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $3
+		WHERE id = $9
 	`
 
-	result, err := db.ExecContext(ctx, query, name, language, userID)
+	result, err := db.ExecContext(ctx, query,
+		update.Name,
+		update.Language,
+		update.PregnancyWeek,
+		update.PregnancyStartDate,
+		update.ExpectedDeliveryDate,
+		update.IsFirstPregnancy,
+		update.PrimaryConcern,
+		update.DietPreference,
+		userID,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to update profile: %w", err)
 	}

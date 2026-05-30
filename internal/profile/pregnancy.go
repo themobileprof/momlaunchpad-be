@@ -29,3 +29,14 @@ func EDDFromWeek(week int, now time.Time) time.Time {
 	weeksRemaining := fullTermWeeks - week
 	return now.AddDate(0, 0, weeksRemaining*7)
 }
+
+// PregnancyStartFromWeek estimates LMP/start date from gestational week.
+func PregnancyStartFromWeek(week int, now time.Time) time.Time {
+	if week < 1 {
+		week = 1
+	}
+	if week > 42 {
+		week = 42
+	}
+	return now.AddDate(0, 0, -(week * 7))
+}

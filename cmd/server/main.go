@@ -303,6 +303,7 @@ func main() {
 	profileGroup.Use(middleware.JWTAuth(jwtSecret))
 	{
 		profileGroup.GET("/profile", profileHandler.GetProfile)
+		profileGroup.PUT("/profile", profileHandler.UpdateProfile)
 		profileGroup.PUT("/onboarding", profileHandler.CompleteOnboarding)
 	}
 

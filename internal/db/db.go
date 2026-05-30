@@ -93,9 +93,14 @@ type User struct {
 	PasswordHash         string     `json:"-"` // Don't expose password hash
 	Name                 *string    `json:"name"`
 	Language             string     `json:"language"`
-	Currency             string     `json:"currency"`
-	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
-	SavingsGoal          *float64   `json:"savings_goal"`
+	Currency              string     `json:"currency"`
+	PregnancyWeek         *int       `json:"pregnancy_week"`
+	PregnancyStartDate    *time.Time `json:"pregnancy_start_date"`
+	ExpectedDeliveryDate  *time.Time `json:"expected_delivery_date"`
+	IsFirstPregnancy      *bool      `json:"is_first_pregnancy"`
+	PrimaryConcern        *string    `json:"primary_concern"`
+	DietPreference        *string    `json:"diet_preference"`
+	SavingsGoal           *float64   `json:"savings_goal"`
 	IsAdmin              bool       `json:"is_admin"`
 	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
