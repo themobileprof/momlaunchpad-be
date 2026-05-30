@@ -65,3 +65,15 @@ func (db *DB) SaveWelcomeMessage(ctx context.Context, userID string, cacheDate t
 
 	return msg, nil
 }
+
+// DeleteWelcomeMessage removes a cached welcome message for a user on a given date.
+func (db *DB) DeleteWelcomeMessage(ctx context.Context, userID string, cacheDate time.Time) error {
+	_, err := db.ExecContext(ctx,
+		`DELETE FROM user_welcome_messages WHERE user_id = $1 AND cache_date = $2`,
+		userID, cacheDate.Format("2006-01-02"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete welcome message: %w", err)
+	}
+	return nil
+}

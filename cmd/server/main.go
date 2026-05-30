@@ -150,11 +150,27 @@ func main() {
 	var welcomeGemini llm.Client
 	if geminiAPIKey != "" {
 		welcomeGemini = gemini.NewHTTPClient(gemini.Config{APIKey: geminiAPIKey})
-		log.Println("✅ Daily welcome messages will use Gemini")
-	} else {
-		log.Println("⚠️  GEMINI_API_KEY not set — welcome messages will use fallback templates")
 	}
-	welcomeSvc := welcome.NewService(database, welcomeGemini)
+
+	var welcomeDeepseek llm.Client
+	if deepseekAPIKey != "" {
+		welcomeDeepseek = deepseek.NewHTTPClient(deepseek.Config{
+			APIKey: deepseekAPIKey,
+		})
+	}
+
+	switch {
+	case welcomeGemini != nil && welcomeDeepseek != nil:
+		log.Println("✅ Daily welcome messages: Gemini primary, DeepSeek fallback")
+	case welcomeGemini != nil:
+		log.Println("✅ Daily welcome messages will use Gemini")
+	case welcomeDeepseek != nil:
+		log.Println("✅ Daily welcome messages will use DeepSeek")
+	default:
+		log.Println("⚠️  No LLM keys for welcome — using static fallback templates")
+	}
+
+	welcomeSvc := welcome.NewService(database, welcomeGemini, welcomeDeepseek)
 	welcomeHandler := api.NewWelcomeHandler(welcomeSvc)
 
 	chatHandler := ws.NewChatHandler(

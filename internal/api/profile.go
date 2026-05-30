@@ -182,6 +182,10 @@ func (h *ProfileHandler) saveProfile(
 		return nil, nil, err
 	}
 
+	// Profile changes affect welcome personalization — invalidate today's cache.
+	cacheDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	_ = h.db.DeleteWelcomeMessage(ctx, userID, cacheDate)
+
 	return user, facts, nil
 }
 

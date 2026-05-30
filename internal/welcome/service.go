@@ -21,13 +21,15 @@ type Result struct {
 
 // Service generates and caches personalized daily welcome messages.
 type Service struct {
-	db     *db.DB
-	gemini llm.Client
+	db       *db.DB
+	gemini   llm.Client
+	deepseek llm.Client
 }
 
-// NewService creates a welcome message service. gemini may be nil (fallback only).
-func NewService(database *db.DB, gemini llm.Client) *Service {
-	return &Service{db: database, gemini: gemini}
+// NewService creates a welcome message service.
+// Either LLM client may be nil; generation falls back to the next provider, then a static template.
+func NewService(database *db.DB, gemini, deepseek llm.Client) *Service {
+	return &Service{db: database, gemini: gemini, deepseek: deepseek}
 }
 
 // GetDailyWelcome returns today's cached message or generates a new one.
@@ -75,17 +77,37 @@ func (s *Service) GetDailyWelcome(ctx context.Context, userID string) (*Result, 
 }
 
 func (s *Service) generateMessage(ctx context.Context, user *db.User, contextText string) (string, string, error) {
-	if s.gemini == nil {
-		return fallbackWelcome(user), "fallback", fmt.Errorf("gemini client not configured")
+	prompt := buildWelcomePrompt(user, contextText)
+
+	if s.gemini != nil {
+		message, err := s.completeWithLLM(ctx, s.gemini, prompt)
+		if err == nil {
+			return message, "gemini", nil
+		}
 	}
 
+	if s.deepseek != nil {
+		message, err := s.completeWithLLM(ctx, s.deepseek, prompt)
+		if err == nil {
+			return message, "deepseek", nil
+		}
+	}
+
+	if s.gemini == nil && s.deepseek == nil {
+		return fallbackWelcome(user), "fallback", fmt.Errorf("no LLM client configured")
+	}
+
+	return fallbackWelcome(user), "fallback", fmt.Errorf("all LLM providers failed")
+}
+
+func buildWelcomePrompt(user *db.User, contextText string) string {
 	name := displayFirstName(user)
 	weekLine := ""
 	if user.PregnancyWeek != nil {
 		weekLine = fmt.Sprintf("They are at pregnancy week %d.\n", *user.PregnancyWeek)
 	}
 
-	prompt := fmt.Sprintf(`You are a warm, supportive pregnancy companion in a mobile app.
+	return fmt.Sprintf(`You are a warm, supportive pregnancy companion in a mobile app.
 
 Write ONE personalized welcome message for the user below.
 
@@ -100,11 +122,13 @@ Rules:
 
 User health context:
 %s`, name, weekLine, maxWelcomeWords, contextText)
+}
 
+func (s *Service) completeWithLLM(ctx context.Context, client llm.Client, prompt string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	resp, err := s.gemini.ChatCompletion(ctx, llm.ChatRequest{
+	resp, err := client.ChatCompletion(ctx, llm.ChatRequest{
 		Messages: []llm.ChatMessage{
 			{Role: "user", Content: prompt},
 		},
@@ -112,19 +136,19 @@ User health context:
 		MaxTokens:   220,
 	})
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	if len(resp.Choices) == 0 {
-		return "", "", fmt.Errorf("empty gemini response")
+		return "", fmt.Errorf("empty LLM response")
 	}
 
 	message := strings.TrimSpace(resp.Choices[0].Message.Content)
 	message = strings.Trim(message, "\"'`")
 	if message == "" {
-		return "", "", fmt.Errorf("empty welcome text")
+		return "", fmt.Errorf("empty welcome text")
 	}
 
-	return message, "gemini", nil
+	return message, nil
 }
 
 func (s *Service) buildHealthContext(ctx context.Context, userID string, user *db.User) (string, error) {
