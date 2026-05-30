@@ -2,20 +2,23 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
+
+var googleHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // OAuthConfig holds OAuth provider configurations
 type OAuthConfig struct {
@@ -112,14 +115,15 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 	}
 
 	// Find or create user based on email (email is the canonical identifier)
-	user, err := h.findOrCreateUserByEmail(userInfo.Email, "google", userInfo.ID, userInfo.Name)
+	user, err := h.findOrCreateUserByEmail(c.Request.Context(), userInfo.Email, "google", userInfo.ID, userInfo.Name)
 	if err != nil {
+		log.Printf("Google OAuth callback: authenticate user failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to authenticate user"})
 		return
 	}
 
 	// Generate JWT token
-	jwtToken, err := h.generateJWT(user.ID, user.Email)
+	jwtToken, err := h.generateJWT(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -130,7 +134,9 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 		"user": gin.H{
 			"id":       user.ID,
 			"email":    user.Email,
-			"username": user.Username,
+			"name":     oauthDisplayName(userInfo.Name, user),
+			"language": user.Language,
+			"is_admin": user.IsAdmin,
 		},
 	})
 }
@@ -162,14 +168,15 @@ func (h *OAuthHandler) GoogleTokenAuth(c *gin.Context) {
 	}
 
 	// Find or create user based on email (same logic as web flow)
-	user, err := h.findOrCreateUserByEmail(userInfo.Email, "google", userInfo.ID, userInfo.Name)
+	user, err := h.findOrCreateUserByEmail(c.Request.Context(), userInfo.Email, "google", userInfo.ID, userInfo.Name)
 	if err != nil {
+		log.Printf("Google token auth: authenticate user failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to authenticate user"})
 		return
 	}
 
 	// Generate JWT token
-	jwtToken, err := h.generateJWT(user.ID, user.Email)
+	jwtToken, err := h.generateJWT(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -180,7 +187,9 @@ func (h *OAuthHandler) GoogleTokenAuth(c *gin.Context) {
 		"user": gin.H{
 			"id":       user.ID,
 			"email":    user.Email,
-			"username": user.Username,
+			"name":     oauthDisplayName(userInfo.Name, user),
+			"language": user.Language,
+			"is_admin": user.IsAdmin,
 		},
 	})
 }
@@ -201,7 +210,7 @@ func (h *OAuthHandler) AppleCallback(c *gin.Context) {
 
 // getGoogleUserInfo fetches user information from Google
 func (h *OAuthHandler) getGoogleUserInfo(accessToken string) (*GoogleUserInfo, error) {
-	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	resp, err := googleHTTPClient.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
@@ -224,87 +233,54 @@ func (h *OAuthHandler) getGoogleUserInfo(accessToken string) (*GoogleUserInfo, e
 	return &userInfo, nil
 }
 
-// User represents a user in the system
-type User struct {
-	ID       string
-	Username string
-	Email    string
-}
-
 // findOrCreateUserByEmail finds existing user by email or creates new one
 // This implements email-based user linking across providers (Google, Apple, etc.)
-func (h *OAuthHandler) findOrCreateUserByEmail(email, provider, providerUserID, name string) (*User, error) {
-	tx, err := h.db.DB.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Look for existing user by email (canonical identifier across all providers)
-	var user User
-	err = tx.QueryRow(`
-		SELECT id, username, email 
-		FROM users 
-		WHERE email = $1
-	`, email).Scan(&user.ID, &user.Username, &user.Email)
-
-	if err == sql.ErrNoRows {
-		// No user exists with this email - create new user
-		username := generateUsernameFromEmail(email)
-		err = tx.QueryRow(`
-			INSERT INTO users (username, email, auth_provider, created_at, updated_at)
-			VALUES ($1, $2, $3, NOW(), NOW())
-			RETURNING id, username, email
-		`, username, email, provider).Scan(&user.ID, &user.Username, &user.Email)
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
-		}
-	} else if err != nil {
+func (h *OAuthHandler) findOrCreateUserByEmail(ctx context.Context, email, provider, providerUserID, name string) (*db.User, error) {
+	user, err := h.db.GetUserByEmail(ctx, email)
+	if err != nil && err != db.ErrNotFound {
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
-	// Link OAuth provider to user (if not already linked)
-	_, err = tx.Exec(`
-		INSERT INTO oauth_providers (user_id, provider, provider_user_id, email, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, NOW(), NOW())
-		ON CONFLICT (provider, provider_user_id) DO UPDATE
-		SET updated_at = NOW()
-	`, user.ID, provider, providerUserID, email)
+	if user == nil {
+		displayName := name
+		if displayName == "" {
+			displayName = generateUsernameFromEmail(email)
+		}
 
-	if err != nil {
+		user = &db.User{
+			Email:    email,
+			Name:     &displayName,
+			Language: "en",
+			IsAdmin:  false,
+		}
+
+		if err := h.db.CreateOAuthUser(ctx, user, provider); err != nil {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+	}
+
+	if err := h.db.CreateOAuthProvider(ctx, user.ID, provider, providerUserID, email); err != nil {
 		return nil, fmt.Errorf("failed to link OAuth provider: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return &user, nil
+	return user, nil
 }
 
-// generateJWT creates a JWT token for authenticated user
-func (h *OAuthHandler) generateJWT(userID, email string) (string, error) {
+// generateJWT creates a JWT token using the same claims as email/password login.
+func (h *OAuthHandler) generateJWT(user *db.User) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET not configured")
 	}
 
-	expiryStr := os.Getenv("JWT_EXPIRY")
-	if expiryStr == "" {
-		expiryStr = "24h"
-	}
-
-	expiry, err := time.ParseDuration(expiryStr)
-	if err != nil {
-		expiry = 24 * time.Hour
-	}
-
-	claims := jwt.MapClaims{
-		"user_id": userID,
-		"email":   email,
-		"exp":     time.Now().Add(expiry).Unix(),
-		"iat":     time.Now().Unix(),
+	claims := &middleware.JWTClaims{
+		UserID:  user.ID,
+		Email:   user.Email,
+		IsAdmin: user.IsAdmin,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour * 7)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -328,6 +304,16 @@ func generateUsernameFromEmail(email string) string {
 	return email
 }
 
+func oauthDisplayName(googleName string, user *db.User) string {
+	if googleName != "" {
+		return googleName
+	}
+	if user.Name != nil && *user.Name != "" {
+		return *user.Name
+	}
+	return generateUsernameFromEmail(user.Email)
+}
+
 // verifyGoogleIDToken verifies a Google ID token from mobile apps
 // This uses Google's tokeninfo endpoint to validate the token
 // Accepts tokens from multiple client IDs (web, Android, iOS)
@@ -340,7 +326,7 @@ func (h *OAuthHandler) verifyGoogleIDToken(idToken string) (*GoogleUserInfo, err
 
 	// Call Google's tokeninfo endpoint to verify the token
 	url := "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken
-	resp, err := http.Get(url)
+	resp, err := googleHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}

@@ -28,6 +28,19 @@ func (db *DB) CreateUser(ctx context.Context, user *User) error {
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 }
 
+// CreateOAuthUser creates a user authenticated via an external OAuth provider.
+func (db *DB) CreateOAuthUser(ctx context.Context, user *User, authProvider string) error {
+	query := `
+		INSERT INTO users (email, password_hash, display_name, preferred_language, is_admin, auth_provider)
+		VALUES ($1, NULL, $2, $3, $4, $5)
+		RETURNING id, created_at, updated_at
+	`
+
+	return db.QueryRowContext(ctx, query,
+		user.Email, user.Name, user.Language, user.IsAdmin, authProvider,
+	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+}
+
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
