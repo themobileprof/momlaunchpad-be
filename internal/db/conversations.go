@@ -181,3 +181,14 @@ func (db *DB) GetMessagesByConversation(ctx context.Context, conversationID stri
 	
 	return messages, nil
 }
+
+// CountMessagesByConversation returns the number of messages in a conversation.
+func (db *DB) CountMessagesByConversation(ctx context.Context, conversationID string) (int, error) {
+	query := `SELECT COUNT(*) FROM messages WHERE conversation_id = $1`
+
+	var count int
+	if err := db.QueryRowContext(ctx, query, conversationID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+	return count, nil
+}

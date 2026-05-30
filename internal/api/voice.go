@@ -274,6 +274,11 @@ func (r *VoiceResponder) SendDone() error {
 	return nil
 }
 
+// SendTitleUpdated is a no-op for voice sessions.
+func (r *VoiceResponder) SendTitleUpdated(title string) error {
+	return nil
+}
+
 // GetResponse returns accumulated response
 func (r *VoiceResponder) GetResponse() string {
 	r.mu.Lock()

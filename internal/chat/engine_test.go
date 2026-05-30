@@ -138,6 +138,23 @@ func (m *mockDB) GetSystemSetting(ctx context.Context, key string) (*db.SystemSe
 	}
 	return nil, db.ErrNotFound
 }
+func (m *mockDB) GetMostRecentConversation(ctx context.Context, userID string) (*db.Conversation, error) {
+	return nil, nil
+}
+func (m *mockDB) GetConversation(ctx context.Context, id string) (*db.Conversation, error) {
+	title := "New conversation"
+	return &db.Conversation{ID: id, Title: &title}, nil
+}
+func (m *mockDB) UpdateConversation(ctx context.Context, id string, title *string, isStarred *bool) (*db.Conversation, error) {
+	t := "Updated"
+	if title != nil {
+		t = *title
+	}
+	return &db.Conversation{ID: id, Title: &t}, nil
+}
+func (m *mockDB) CountMessagesByConversation(ctx context.Context, conversationID string) (int, error) {
+	return len(m.messages), nil
+}
 
 type mockResponder struct {
 	messages []string
@@ -152,4 +169,80 @@ func (m *mockResponder) SendMessage(content string) error {
 func (m *mockResponder) SendCalendarSuggestion(suggestion calendar.Suggestion) error { return nil }
 func (m *mockResponder) SendError(message string) error                              { return nil }
 func (m *mockResponder) SendDone() error                                             { m.done = true; return nil }
+func (m *mockResponder) SendTitleUpdated(title string) error                         { return nil }
 func (m *mockResponder) SetConversationID(id string)                                 { m.convID = id }
+
+type trackingPromptBuilder struct {
+	lastReq prompt.PromptRequest
+}
+
+func (m *trackingPromptBuilder) BuildPrompt(req prompt.PromptRequest) []llm.ChatMessage {
+	m.lastReq = req
+	return []llm.ChatMessage{
+		{Role: "system", Content: "test"},
+		{Role: "user", Content: req.UserMessage},
+	}
+}
+
+func TestEngine_FirstMessageBypassesSmallTalk(t *testing.T) {
+	pb := &trackingPromptBuilder{}
+	engine := NewEngine(
+		&mockClassifier{},
+		&mockMemoryManager{},
+		pb,
+		&mockLLMClient{},
+		&mockCalSuggester{},
+		&mockLangManager{},
+		&mockDB{},
+	)
+	responder := &mockResponder{}
+
+	_, err := engine.ProcessMessage(context.Background(), ProcessRequest{
+		UserID:         "user1",
+		ConversationID: "conv1",
+		Message:        "Hello",
+		Language:       "en",
+		Responder:      responder,
+	})
+	if err != nil {
+		t.Fatalf("ProcessMessage failed: %v", err)
+	}
+
+	if !pb.lastReq.IsConversationStart {
+		t.Error("Expected first message to be marked as conversation start")
+	}
+	if pb.lastReq.IsSmallTalk {
+		t.Error("Expected first-message greeting to skip small-talk prompt path")
+	}
+	if len(responder.messages) != 1 || responder.messages[0] != "Test response" {
+		t.Errorf("Expected LLM response, got %v", responder.messages)
+	}
+}
+
+func TestEngine_FollowUpSmallTalkUsesCannedResponse(t *testing.T) {
+	engine := NewEngine(
+		&mockClassifier{},
+		&mockMemoryManager{},
+		&mockPromptBuilder{},
+		&mockLLMClient{},
+		&mockCalSuggester{},
+		&mockLangManager{},
+		&mockDB{messages: []string{"existing1", "existing2"}},
+	)
+	responder := &mockResponder{}
+
+	_, err := engine.ProcessMessage(context.Background(), ProcessRequest{
+		UserID:         "user1",
+		ConversationID: "conv1",
+		Message:        "Hi again",
+		Language:       "en",
+		Responder:      responder,
+	})
+	if err != nil {
+		t.Fatalf("ProcessMessage failed: %v", err)
+	}
+
+	if len(responder.messages) != 1 || responder.messages[0] != getSmallTalkResponse("en") {
+		t.Errorf("Expected canned small-talk response, got %v", responder.messages)
+	}
+}

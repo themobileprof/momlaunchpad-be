@@ -14,8 +14,9 @@ type PromptRequest struct {
 	UserID            string
 	UserMessage       string
 	Language          string
-	IsSmallTalk       bool
-	ShortTermMemory   []memory.Message
+	IsSmallTalk          bool
+	IsConversationStart  bool
+	ShortTermMemory      []memory.Message
 	Facts             []memory.UserFact
 	RecentSymptoms    []map[string]interface{} // Recent symptom history
 	ConversationState *conversation.State      // Track conversation context
@@ -111,8 +112,13 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 	// Conversation flow with state tracking
 	sb.WriteString("CONVERSATION FLOW:\n")
 
-	// If there's a primary concern being tracked
-	if req.ConversationState != nil && req.ConversationState.PrimaryConcern != "" {
+	if req.IsConversationStart {
+		sb.WriteString("FIRST MESSAGE IN CHAT:\n")
+		sb.WriteString("- Do not reply with empty pleasantries or generic offers like \"How can I help today?\"\n")
+		sb.WriteString("- If the user only greets you, welcome them briefly and ask what pregnancy question or concern they'd like to discuss.\n")
+		sb.WriteString("- If they ask a substantive question, answer it directly.\n")
+		sb.WriteString("- Keep it to 2-3 sentences and guide toward a specific topic.\n")
+	} else if req.ConversationState != nil && req.ConversationState.PrimaryConcern != "" {
 		sb.WriteString(fmt.Sprintf("PRIMARY CONCERN: %s\n", req.ConversationState.PrimaryConcern))
 		sb.WriteString("- This is what the user originally asked about - stay focused on resolving this first\n")
 

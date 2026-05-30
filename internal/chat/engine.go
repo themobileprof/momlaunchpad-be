@@ -29,6 +29,7 @@ type Responder interface {
 	SendCalendarSuggestion(suggestion calendar.Suggestion) error
 	SendError(message string) error
 	SendDone() error
+	SendTitleUpdated(title string) error
 	SetConversationID(id string)
 }
 
@@ -88,6 +89,9 @@ type DBInterface interface {
 	SaveOrUpdateFact(ctx context.Context, userID, key, value string, confidence float64) (*db.UserFact, error)
 	GetSystemSetting(ctx context.Context, key string) (*db.SystemSetting, error)
 	GetMostRecentConversation(ctx context.Context, userID string) (*db.Conversation, error)
+	GetConversation(ctx context.Context, id string) (*db.Conversation, error)
+	UpdateConversation(ctx context.Context, id string, title *string, isStarred *bool) (*db.Conversation, error)
+	CountMessagesByConversation(ctx context.Context, conversationID string) (int, error)
 }
 
 // NewEngine creates a new transport-agnostic chat engine
@@ -168,7 +172,15 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		Content: req.Message,
 	})
 
-	if result.Intent == classifier.IntentSmallTalk {
+	msgCount, countErr := e.db.CountMessagesByConversation(ctx, conversationID)
+	if countErr != nil {
+		log.Printf("Warning: failed to count messages: %v", countErr)
+		msgCount = 0
+	}
+	isConversationStart := msgCount == 1
+
+	// First message in a chat should engage substantively, not canned pleasantries.
+	if result.Intent == classifier.IntentSmallTalk && !isConversationStart {
 		response := getSmallTalkResponse(req.Language)
 		if err := req.Responder.SendMessage(response); err != nil {
 			return conversationID, err
@@ -178,6 +190,8 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "assistant", response); err != nil {
 			log.Printf("Failed to save assistant message: %v", err)
 		}
+
+		e.maybeGenerateConversationTitle(ctx, conversationID, req.Message, response, req.Responder)
 		
 		// Reset conversation state on small talk
 		e.convManager.Reset(req.UserID)
@@ -280,15 +294,16 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 	log.Printf("Building prompt for user=%s, intent=%s, aiName=%s", req.UserID, result.Intent, aiName)
 
 	promptReq := prompt.PromptRequest{
-		UserID:            req.UserID,
-		UserMessage:       sanitizedContent,
-		Language:          req.Language,
-		IsSmallTalk:       result.Intent == classifier.IntentSmallTalk,
-		ShortTermMemory:   shortTermMsgs,
-		Facts:             convertDBFactsToMemoryFacts(facts),
-		RecentSymptoms:    recentSymptoms,
-		ConversationState: convState,
-		AIName:            aiName, // Pass AI name to prompt builder
+		UserID:              req.UserID,
+		UserMessage:         sanitizedContent,
+		Language:            req.Language,
+		IsSmallTalk:         result.Intent == classifier.IntentSmallTalk && !isConversationStart,
+		IsConversationStart: isConversationStart,
+		ShortTermMemory:     shortTermMsgs,
+		Facts:               convertDBFactsToMemoryFacts(facts),
+		RecentSymptoms:      recentSymptoms,
+		ConversationState:   convState,
+		AIName:              aiName, // Pass AI name to prompt builder
 	}
 	messages := e.promptBuilder.BuildPrompt(promptReq)
 
@@ -351,7 +366,9 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		Content: assistantMsg,
 	})
 
-	e.extractAndSaveFacts(ctx, req.UserID, req.Message, assistantMsg)
+		e.extractAndSaveFacts(ctx, req.UserID, req.Message, assistantMsg)
+
+	e.maybeGenerateConversationTitle(ctx, conversationID, req.Message, assistantMsg, req.Responder)
 
 	return conversationID, req.Responder.SendDone()
 }
@@ -448,4 +465,47 @@ func containsNewSymptom(message, primaryConcern string) bool {
 
 	// If less than half the concern words match, likely a new topic
 	return matchCount < len(concernWords)/2
+}
+
+func (e *Engine) maybeGenerateConversationTitle(
+	ctx context.Context,
+	conversationID, userMessage, assistantMessage string,
+	responder Responder,
+) {
+	conv, err := e.db.GetConversation(ctx, conversationID)
+	if err != nil || conv == nil {
+		return
+	}
+	currentTitle := ""
+	if conv.Title != nil {
+		currentTitle = *conv.Title
+	}
+	if !conversation.IsGenericTitle(currentTitle) {
+		return
+	}
+
+	count, err := e.db.CountMessagesByConversation(ctx, conversationID)
+	if err != nil || count != 2 {
+		return
+	}
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		title, err := conversation.GenerateTitle(bgCtx, e.llmClient, userMessage, assistantMessage)
+		if err != nil || title == "" {
+			log.Printf("AI title generation failed, using fallback: %v", err)
+			title = conversation.FallbackTitle(userMessage)
+		}
+
+		if _, err := e.db.UpdateConversation(bgCtx, conversationID, &title, nil); err != nil {
+			log.Printf("Failed to save generated title: %v", err)
+			return
+		}
+
+		if err := responder.SendTitleUpdated(title); err != nil {
+			log.Printf("Failed to send title update: %v", err)
+		}
+	}()
 }

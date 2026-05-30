@@ -206,6 +206,14 @@ func (w *wsResponder) SendDone() error {
 	})
 }
 
+func (w *wsResponder) SendTitleUpdated(title string) error {
+	return w.conn.WriteJSON(OutgoingMessage{
+		Type:           "title_updated",
+		Content:        title,
+		ConversationID: w.conversationID,
+	})
+}
+
 // sendError is a helper for handler-level errors
 func (h *ChatHandler) sendError(conn *websocket.Conn, message string) error {
 	return conn.WriteJSON(OutgoingMessage{

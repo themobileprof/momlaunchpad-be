@@ -73,6 +73,32 @@ func TestBuilder_BuildPromptSpanish(t *testing.T) {
 	}
 }
 
+func TestBuilder_ConversationStart(t *testing.T) {
+	builder := NewBuilder()
+
+	req := PromptRequest{
+		UserID:              "user123",
+		UserMessage:         "Hi there",
+		Language:            "en",
+		IsConversationStart: true,
+		ShortTermMemory:     []memory.Message{},
+		Facts:               []memory.UserFact{},
+	}
+
+	messages := builder.BuildPrompt(req)
+	if len(messages) == 0 {
+		t.Fatal("Expected messages, got empty slice")
+	}
+
+	systemPrompt := messages[0].Content
+	if !strings.Contains(systemPrompt, "FIRST MESSAGE IN CHAT") {
+		t.Error("Expected conversation-start guidance in system prompt")
+	}
+	if !strings.Contains(systemPrompt, "Do not reply with empty pleasantries") {
+		t.Error("Expected anti-pleasantry guidance in system prompt")
+	}
+}
+
 func TestBuilder_BuildPromptSmallTalk(t *testing.T) {
 	builder := NewBuilder()
 
