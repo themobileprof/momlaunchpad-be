@@ -398,20 +398,6 @@ func convertDBFactsToMemoryFacts(dbFacts []db.UserFact) []memory.UserFact {
 	return memFacts
 }
 
-func (e *Engine) extractAndSaveFacts(ctx context.Context, userID, userMsg, aiMsg string) {
-	normalized := strings.ToLower(userMsg)
-
-	if strings.Contains(normalized, "week") && strings.Contains(normalized, "pregnant") {
-		for i := 1; i <= 42; i++ {
-			weekStr := fmt.Sprintf("%d week", i)
-			if strings.Contains(normalized, weekStr) {
-				e.db.SaveOrUpdateFact(ctx, userID, "pregnancy_week", fmt.Sprintf("%d", i), 0.8)
-				break
-			}
-		}
-	}
-}
-
 // extractPrimaryConcern extracts the main symptom/concern from message
 func extractPrimaryConcern(message string) string {
 	lower := strings.ToLower(message)

@@ -97,6 +97,7 @@ type User struct {
 	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
 	SavingsGoal          *float64   `json:"savings_goal"`
 	IsAdmin              bool       `json:"is_admin"`
+	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }

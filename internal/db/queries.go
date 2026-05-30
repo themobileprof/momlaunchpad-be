@@ -45,7 +45,8 @@ func (db *DB) CreateOAuthUser(ctx context.Context, user *User, authProvider stri
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
 		SELECT id, email, password_hash, display_name, preferred_language, currency,
-		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
+		       expected_delivery_date, savings_goal, is_admin, onboarding_completed_at,
+		       created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -54,7 +55,7 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	err := db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
 		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
-		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsAdmin, &user.OnboardingCompletedAt, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -70,7 +71,8 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	query := `
 		SELECT id, email, password_hash, display_name, preferred_language, currency,
-		       expected_delivery_date, savings_goal, is_admin, created_at, updated_at
+		       expected_delivery_date, savings_goal, is_admin, onboarding_completed_at,
+		       created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -79,7 +81,7 @@ func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
 	err := db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
 		&user.Language, &user.Currency, &user.ExpectedDeliveryDate, &user.SavingsGoal,
-		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsAdmin, &user.OnboardingCompletedAt, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -590,6 +592,57 @@ func (db *DB) UpdateUserEDD(ctx context.Context, userID string, edd *time.Time) 
 	result, err := db.ExecContext(ctx, query, edd, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update EDD: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// UpdateUserProfile updates display name and preferred language.
+func (db *DB) UpdateUserProfile(ctx context.Context, userID string, name, language *string) error {
+	query := `
+		UPDATE users
+		SET display_name = COALESCE($1, display_name),
+		    preferred_language = COALESCE($2, preferred_language),
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3
+	`
+
+	result, err := db.ExecContext(ctx, query, name, language, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// CompleteOnboarding marks onboarding as finished for a user.
+func (db *DB) CompleteOnboarding(ctx context.Context, userID string) error {
+	query := `
+		UPDATE users
+		SET onboarding_completed_at = CURRENT_TIMESTAMP,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`
+
+	result, err := db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to complete onboarding: %w", err)
 	}
 
 	rows, err := result.RowsAffected()

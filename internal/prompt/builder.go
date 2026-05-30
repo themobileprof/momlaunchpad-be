@@ -168,9 +168,27 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 			sb.WriteString(fmt.Sprintf("- Pregnancy Week: %s\n", pregnancyWeek))
 		}
 
+		firstPregnancy := getFactValue(req.Facts, "is_first_pregnancy")
+		if firstPregnancy != "" {
+			sb.WriteString(fmt.Sprintf("- First pregnancy: %s\n", firstPregnancy))
+		}
+
+		primaryConcern := getFactValue(req.Facts, "primary_concern")
+		if primaryConcern != "" {
+			sb.WriteString(fmt.Sprintf("- Primary concern: %s\n", primaryConcern))
+		}
+
 		// Other relevant facts
+		skipKeys := map[string]bool{
+			"pregnancy_week":     true,
+			"is_first_pregnancy": true,
+			"primary_concern":    true,
+		}
 		for _, fact := range req.Facts {
-			if fact.Key != "pregnancy_week" && fact.Confidence > 0.6 {
+			if skipKeys[fact.Key] {
+				continue
+			}
+			if fact.Confidence > 0.6 {
 				sb.WriteString(fmt.Sprintf("- %s: %s\n", fact.Key, fact.Value))
 			}
 		}

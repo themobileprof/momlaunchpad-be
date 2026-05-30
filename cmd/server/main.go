@@ -142,6 +142,7 @@ func main() {
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
 	symptomHandler := api.NewSymptomHandler(database)
 	conversationHandler := api.NewConversationHandler(database)
+	profileHandler := api.NewProfileHandler(database)
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -295,6 +296,14 @@ func main() {
 		adminGroup.GET("/settings", adminHandler.GetSystemSettings)
 		adminGroup.GET("/settings/:key", adminHandler.GetSystemSetting)
 		adminGroup.PUT("/settings/:key", adminHandler.UpdateSystemSetting)
+	}
+
+	// User profile & onboarding (authenticated)
+	profileGroup := router.Group("/api/users/me")
+	profileGroup.Use(middleware.JWTAuth(jwtSecret))
+	{
+		profileGroup.GET("/profile", profileHandler.GetProfile)
+		profileGroup.PUT("/onboarding", profileHandler.CompleteOnboarding)
 	}
 
 	// WebSocket chat route (protected via query param/header)
