@@ -1,6 +1,7 @@
 package symptoms
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -41,44 +42,42 @@ func NewTracker() *Tracker {
 	return &Tracker{}
 }
 
+// symptomKeywords maps symptom types to trigger phrases (checked in stable key order via orderedTypes).
+var symptomKeywords = map[string][]string{
+	"swelling":           {"swollen", "swelling", "puffy", "edema"},
+	"nausea":             {"nausea", "nauseous", "morning sickness", "sick", "queasy"},
+	"headache":           {"headache", "head ache", "migraine"},
+	"back_pain":          {"back pain", "backache", "back ache", "lower back"},
+	"cramping":           {"cramp", "cramping", "cramps"},
+	"vision_changes":     {"blurry", "blurred vision", "vision", "can't see", "eyesight"},
+	"dizziness":          {"dizzy", "lightheaded", "faint"},
+	"fatigue":            {"tired", "exhausted", "fatigue", "sleepy"},
+	"insomnia":           {"can't sleep", "insomnia", "awake"},
+	"heartburn":          {"heartburn", "acid reflux", "indigestion"},
+	"vomiting":           {"vomit", "throw up", "throwing up"},
+	"constipation":       {"constipated", "constipation"},
+	"bleeding":           {"bleed", "bleeding", "spotting", "blood"},
+	"contractions":       {"contraction", "contractions", "tightening"},
+	"breast_changes":     {"breast", "nipple", "tender"},
+	"mood_changes":       {"mood", "emotional", "crying", "anxious", "depressed"},
+	"shortness_breath":   {"breath", "breathing", "can't breathe"},
+	"frequent_urination": {"pee", "urinate", "bathroom"},
+}
+
+// orderedSymptomTypes ensures deterministic detection order.
+var orderedSymptomTypes = []string{
+	"swelling", "nausea", "headache", "back_pain", "cramping", "vision_changes",
+	"dizziness", "fatigue", "insomnia", "heartburn", "vomiting", "constipation",
+	"bleeding", "contractions", "breast_changes", "mood_changes", "shortness_breath",
+	"frequent_urination",
+}
+
 // ExtractSymptoms analyzes a message and extracts symptom information
 func (t *Tracker) ExtractSymptoms(message string) []ExtractedSymptom {
 	lower := strings.ToLower(message)
-	symptoms := make([]ExtractedSymptom, 0)
+	detectedTypes := detectSymptomTypes(lower)
 
-	// Common pregnancy symptoms with keywords
-	symptomPatterns := map[string][]string{
-		"swelling":           {"swollen", "swelling", "puffy", "edema"},
-		"nausea":             {"nausea", "nauseous", "morning sickness", "sick", "queasy"},
-		"headache":           {"headache", "head ache", "migraine"},
-		"back_pain":          {"back pain", "backache", "back ache", "lower back"},
-		"cramping":           {"cramp", "cramping", "cramps"},
-		"vision_changes":     {"blurry", "blurred vision", "vision", "can't see", "eyesight"},
-		"dizziness":          {"dizzy", "lightheaded", "faint"},
-		"fatigue":            {"tired", "exhausted", "fatigue", "sleepy"},
-		"insomnia":           {"can't sleep", "insomnia", "awake"},
-		"heartburn":          {"heartburn", "acid reflux", "indigestion"},
-		"vomiting":           {"vomit", "throw up", "throwing up"},
-		"constipation":       {"constipated", "constipation"},
-		"bleeding":           {"bleed", "bleeding", "spotting", "blood"},
-		"contractions":       {"contraction", "contractions", "tightening"},
-		"breast_changes":     {"breast", "nipple", "tender"},
-		"mood_changes":       {"mood", "emotional", "crying", "anxious", "depressed"},
-		"shortness_breath":   {"breath", "breathing", "can't breathe"},
-		"frequent_urination": {"pee", "urinate", "bathroom"},
-	}
-
-	detectedTypes := make([]string, 0)
-	for symptomType, keywords := range symptomPatterns {
-		for _, keyword := range keywords {
-			if strings.Contains(lower, keyword) {
-				detectedTypes = append(detectedTypes, symptomType)
-				break
-			}
-		}
-	}
-
-	// Extract each detected symptom
+	symptoms := make([]ExtractedSymptom, 0, len(detectedTypes))
 	for _, symptomType := range detectedTypes {
 		extracted := ExtractedSymptom{
 			Type:        symptomType,
@@ -88,7 +87,6 @@ func (t *Tracker) ExtractSymptoms(message string) []ExtractedSymptom {
 			OnsetTime:   t.extractOnsetTime(lower),
 		}
 
-		// Find associated symptoms
 		for _, otherType := range detectedTypes {
 			if otherType != symptomType {
 				extracted.AssociatedSymptoms = append(extracted.AssociatedSymptoms, otherType)
@@ -101,96 +99,143 @@ func (t *Tracker) ExtractSymptoms(message string) []ExtractedSymptom {
 	return symptoms
 }
 
+func detectSymptomTypes(lower string) []string {
+	detected := make([]string, 0)
+	for _, symptomType := range orderedSymptomTypes {
+		for _, keyword := range symptomKeywords[symptomType] {
+			if strings.Contains(lower, keyword) {
+				detected = append(detected, symptomType)
+				break
+			}
+		}
+	}
+	return detected
+}
+
+func normalizeSymptomText(message string) string {
+	return strings.ToLower(strings.TrimSpace(message))
+}
+
 // extractSeverity determines severity from message
 func (t *Tracker) extractSeverity(message string) string {
-	severeKeywords := []string{"severe", "really bad", "terrible", "excruciating", "unbearable", "can't handle"}
-	moderateKeywords := []string{"moderate", "bad", "uncomfortable", "bothering"}
-	mildKeywords := []string{"mild", "slight", "little", "bit of"}
+	message = normalizeSymptomText(message)
 
-	for _, keyword := range severeKeywords {
+	for _, keyword := range []string{"severe", "really bad", "terrible", "excruciating", "unbearable", "can't handle"} {
 		if strings.Contains(message, keyword) {
 			return "severe"
 		}
 	}
 
-	for _, keyword := range moderateKeywords {
+	for _, keyword := range []string{"moderate", "uncomfortable", "bothering"} {
 		if strings.Contains(message, keyword) {
 			return "moderate"
 		}
 	}
 
-	for _, keyword := range mildKeywords {
+	// "bad" alone — avoid matching inside "really bad" (handled above as severe)
+	if strings.Contains(message, " bad") || strings.HasPrefix(message, "bad ") || message == "bad" {
+		return "moderate"
+	}
+
+	for _, keyword := range []string{"mild", "slight", "little", "bit of"} {
 		if strings.Contains(message, keyword) {
 			return "mild"
 		}
 	}
 
-	return "moderate" // Default
+	return "moderate"
 }
 
 // extractFrequency determines how often symptom occurs
 func (t *Tracker) extractFrequency(message string) string {
-	constantKeywords := []string{"constant", "all the time", "always", "won't stop", "continuous"}
-	dailyKeywords := []string{"daily", "every day", "everyday"}
-	frequentKeywords := []string{"often", "frequently", "multiple times"}
-	occasionalKeywords := []string{"sometimes", "occasionally", "now and then"}
-	onceKeywords := []string{"once", "one time", "just happened"}
+	message = normalizeSymptomText(message)
 
-	for _, keyword := range constantKeywords {
+	for _, keyword := range []string{"constant", "all the time", "always", "won't stop", "continuous"} {
 		if strings.Contains(message, keyword) {
 			return "constant"
 		}
 	}
 
-	for _, keyword := range dailyKeywords {
+	for _, keyword := range []string{"daily", "every day", "everyday"} {
 		if strings.Contains(message, keyword) {
 			return "daily"
 		}
 	}
 
-	for _, keyword := range frequentKeywords {
+	for _, keyword := range []string{"often", "frequently", "multiple times"} {
 		if strings.Contains(message, keyword) {
 			return "frequent"
 		}
 	}
 
-	for _, keyword := range occasionalKeywords {
+	for _, keyword := range []string{"sometimes", "occasionally", "now and then"} {
 		if strings.Contains(message, keyword) {
 			return "occasional"
 		}
 	}
 
-	for _, keyword := range onceKeywords {
+	for _, keyword := range []string{"once", "one time", "just happened"} {
 		if strings.Contains(message, keyword) {
 			return "once"
 		}
 	}
 
-	return "occasional" // Default
+	return "occasional"
 }
 
-// extractOnsetTime determines when symptom started
-func (t *Tracker) extractOnsetTime(message string) string {
-	// Time patterns with regex
-	timePatterns := map[string]*regexp.Regexp{
-		"now":       regexp.MustCompile(`(right now|just now|currently)`),
-		"today":     regexp.MustCompile(`(today|this morning|this afternoon|this evening)`),
-		"yesterday": regexp.MustCompile(`yesterday`),
-		"days_ago":  regexp.MustCompile(`(\d+)\s*days?\s*ago`),
-		"weeks_ago": regexp.MustCompile(`(\d+)\s*weeks?\s*ago`),
-		"this_week": regexp.MustCompile(`this week`),
-		"last_week": regexp.MustCompile(`last week`),
-		"recently":  regexp.MustCompile(`(recently|lately)`),
-		"few_days":  regexp.MustCompile(`(few days|couple days|several days)`),
-	}
+type onsetRule struct {
+	re     *regexp.Regexp
+	format func([]string) string
+}
 
-	for timeframe, pattern := range timePatterns {
-		if pattern.MatchString(message) {
-			match := pattern.FindStringSubmatch(message)
-			if len(match) > 0 {
-				return match[0]
-			}
-			return timeframe
+var onsetRules = []onsetRule{
+	{regexp.MustCompile(`(right now|just now|currently|just started(?:\s+now)?|started now)`), firstMatch},
+	{regexp.MustCompile(`(today|this morning|this afternoon|this evening)`), firstMatch},
+	{regexp.MustCompile(`yesterday`), staticValue("yesterday")},
+	{regexp.MustCompile(`(\d+)\s*days?\s*ago`), daysAgo},
+	{regexp.MustCompile(`(\d+)\s*weeks?\s*ago`), weeksAgo},
+	{regexp.MustCompile(`(?:going on |for )(\d+)\s*weeks?`), weeksAgo},
+	{regexp.MustCompile(`this week`), staticValue("this week")},
+	{regexp.MustCompile(`last week`), staticValue("last week")},
+	{regexp.MustCompile(`(recently|lately)`), firstMatch},
+	{regexp.MustCompile(`(few days|couple days|several days)`), firstMatch},
+}
+
+func firstMatch(m []string) string {
+	if len(m) > 1 && m[1] != "" {
+		return m[1]
+	}
+	if len(m) > 0 {
+		return m[0]
+	}
+	return "unknown"
+}
+
+func staticValue(v string) func([]string) string {
+	return func([]string) string { return v }
+}
+
+func daysAgo(m []string) string {
+	if len(m) > 1 {
+		return fmt.Sprintf("%s days ago", m[1])
+	}
+	return firstMatch(m)
+}
+
+func weeksAgo(m []string) string {
+	if len(m) > 1 {
+		return fmt.Sprintf("%s weeks ago", m[1])
+	}
+	return firstMatch(m)
+}
+
+// extractOnsetTime determines when symptom started (first matching rule wins).
+func (t *Tracker) extractOnsetTime(message string) string {
+	message = normalizeSymptomText(message)
+
+	for _, rule := range onsetRules {
+		if match := rule.re.FindStringSubmatch(message); len(match) > 0 {
+			return rule.format(match)
 		}
 	}
 

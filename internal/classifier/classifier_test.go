@@ -45,7 +45,7 @@ func TestClassifier_Classify(t *testing.T) {
 			name:       "thank you",
 			input:      "thank you so much",
 			lang:       "en",
-			wantIntent: IntentSmallTalk,
+			wantIntent: IntentGratitude,
 			minConf:    0.8,
 		},
 
@@ -172,7 +172,7 @@ func TestClassifier_Classify(t *testing.T) {
 			name:       "spanish thanks",
 			input:      "gracias",
 			lang:       "es",
-			wantIntent: IntentSmallTalk,
+			wantIntent: IntentGratitude,
 			minConf:    0.8,
 		},
 

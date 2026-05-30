@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -213,9 +214,13 @@ func (h *OAuthHandler) AppleCallback(c *gin.Context) {
 	})
 }
 
+var googleUserInfoURL = func(accessToken string) string {
+	return "https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken
+}
+
 // getGoogleUserInfo fetches user information from Google
 func (h *OAuthHandler) getGoogleUserInfo(accessToken string) (*GoogleUserInfo, error) {
-	resp, err := googleHTTPClient.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	resp, err := googleHTTPClient.Get(googleUserInfoURL(accessToken))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
@@ -378,62 +383,11 @@ func (h *OAuthHandler) verifyGoogleIDToken(idToken string) (*GoogleUserInfo, err
 
 // isAllowedClientID checks if a client ID is in the allowed list
 func isAllowedClientID(clientID, allowedList string) bool {
-	// Split comma-separated list and check each
-	for _, allowed := range splitAndTrim(allowedList, ",") {
-		if clientID == allowed {
+	for _, part := range strings.Split(allowedList, ",") {
+		allowed := strings.TrimSpace(part)
+		if allowed != "" && clientID == allowed {
 			return true
 		}
 	}
 	return false
-}
-
-// splitAndTrim splits a string by delimiter and trims whitespace
-func splitAndTrim(s, delimiter string) []string {
-	parts := []string{}
-	for _, part := range splitString(s, delimiter) {
-		trimmed := trimSpace(part)
-		if trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	return parts
-}
-
-// splitString splits a string by delimiter
-func splitString(s, delimiter string) []string {
-	if s == "" {
-		return []string{}
-	}
-	result := []string{}
-	current := ""
-	for _, c := range s {
-		if string(c) == delimiter {
-			result = append(result, current)
-			current = ""
-		} else {
-			current += string(c)
-		}
-	}
-	if current != "" {
-		result = append(result, current)
-	}
-	return result
-}
-
-// trimSpace removes leading and trailing whitespace
-func trimSpace(s string) string {
-	start := 0
-	end := len(s)
-
-	// Trim leading whitespace
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-
-	// Trim trailing whitespace
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-
-	return s[start:end]
 }

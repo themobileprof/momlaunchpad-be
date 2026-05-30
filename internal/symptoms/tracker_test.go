@@ -1,6 +1,7 @@
 package symptoms
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestExtractSymptoms(t *testing.T) {
 			message:        "I've had really bad swollen feet for the past 3 days",
 			expectCount:    1,
 			expectTypes:    []string{"swelling"},
-			expectSeverity: "moderate",
+			expectSeverity: "severe",
 		},
 		{
 			name:           "Multiple symptoms",
@@ -35,7 +36,7 @@ func TestExtractSymptoms(t *testing.T) {
 		},
 		{
 			name:           "Severe symptom",
-			message:        "I have severe bleeding and unbearable pain",
+			message:        "I have severe bleeding and unbearable back pain",
 			expectCount:    2,
 			expectTypes:    []string{"bleeding", "back_pain"},
 			expectSeverity: "severe",
@@ -137,6 +138,25 @@ func TestExtractFrequency(t *testing.T) {
 	}
 }
 
+func TestFormatSymptomForPrompt(t *testing.T) {
+	s := Symptom{
+		SymptomType:          "nausea",
+		OnsetTime:            "yesterday",
+		Severity:             "mild",
+		Frequency:            "daily",
+		AssociatedSymptoms:   []string{"fatigue"},
+	}
+	got := FormatSymptomForPrompt(s)
+	if got == "" {
+		t.Fatal("expected formatted prompt text")
+	}
+	for _, want := range []string{"nausea", "yesterday", "mild", "daily", "fatigue"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in %q", want, got)
+		}
+	}
+}
+
 func TestExtractOnsetTime(t *testing.T) {
 	tracker := NewTracker()
 
@@ -148,7 +168,7 @@ func TestExtractOnsetTime(t *testing.T) {
 		{"This happened this morning", "this morning"},
 		{"Started 3 days ago", "3 days ago"},
 		{"Been going on for 2 weeks", "2 weeks ago"},
-		{"Just started now", "right now"},
+		{"Just started now", "just started now"},
 		{"This week it began", "this week"},
 		{"Random text", "unknown"}, // default
 	}

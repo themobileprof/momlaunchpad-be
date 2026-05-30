@@ -69,24 +69,7 @@ func (h *ConversationHandler) CreateConversation(c *gin.Context) {
 		// If body is empty, req.Title is "" which is valid.
 	}
 	
-	var title *string
-	if req.Title != "" {
-		title = &req.Title
-	} else {
-		// Default title or nil? DB allows nil? let's check. 
-		// DB schema said title VARCHAR(255). It can be null if not NOT NULL.
-		// Migration said: title VARCHAR(255) NOT NULL DEFAULT 'New Conversation' ?
-		// Let's check migration content from previous turn. 
-		// It says: title VARCHAR(255) NOT NULL
-		// So we must provide title or use DB default. DB INSERT query passes $2.
-		// internal/db/conversations.go CreateConversation accepts *string.
-		// If nil passed, driver might send NULL.
-		// If column is NOT NULL, it will fail unless default is used.
-		// But in Go `db.QueryRowContext`... if I pass nil, it sends NULL.
-		// Let's assume we should set a default if empty.
-		defaultTitle := "New Conversation"
-		title = &defaultTitle
-	}
+	title := resolveConversationTitle(req.Title)
 	
 	conversation, err := h.db.CreateConversation(c.Request.Context(), userID, title)
 	if err != nil {
@@ -223,4 +206,13 @@ func (h *ConversationHandler) GetMessages(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusOK, messages)
+}
+
+// resolveConversationTitle returns the client title or the default conversation title.
+func resolveConversationTitle(title string) *string {
+	if title != "" {
+		return &title
+	}
+	defaultTitle := "New Conversation"
+	return &defaultTitle
 }

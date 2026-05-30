@@ -124,6 +124,74 @@ func TestGetVisit_Forbidden(t *testing.T) {
 	}
 }
 
+func TestCreateVisit_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+	userID := "11111111-1111-1111-1111-111111111111"
+	now := time.Now()
+
+	mock.ExpectQuery(`INSERT INTO doctor_visits`).
+		WithArgs(
+			userID, sqlmock.AnyArg(), "prenatal",
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "user", sqlmock.AnyArg(),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow("visit-1", now, now))
+
+	r := ginWithUserID(userID)
+	r.POST("/visits", NewDoctorVisitHandler(database).CreateVisit)
+
+	req, err := jsonRequest(http.MethodPost, "/visits", map[string]any{
+		"visit_date": now.Format(time.RFC3339),
+		"visit_type": "prenatal",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListVisits_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+	userID := "11111111-1111-1111-1111-111111111111"
+
+	mock.ExpectQuery(`FROM doctor_visits`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "visit_date", "visit_type", "provider_name", "facility_name",
+			"chief_complaint", "clinical_notes", "diagnosis", "treatment_plan", "follow_up_instructions",
+			"blood_pressure_systolic", "blood_pressure_diastolic", "weight_kg", "heart_rate_bpm",
+			"temperature_celsius", "fundal_height_cm", "fetal_heart_rate_bpm", "gestational_age_weeks",
+			"medications", "lab_results", "next_appointment_at", "next_appointment_notes",
+			"recorded_by", "provider_user_id", "created_at", "updated_at",
+		}))
+
+	r := ginWithUserID(userID)
+	r.GET("/visits", NewDoctorVisitHandler(database).ListVisits)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/visits", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestApplyVisitUpdates(t *testing.T) {
 	visit := &db.DoctorVisit{VisitType: "prenatal"}
 	newType := "follow_up"

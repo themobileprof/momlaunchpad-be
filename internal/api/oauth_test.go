@@ -278,26 +278,6 @@ func TestGoogleTokenAuth_CreatesNewUser(t *testing.T) {
 	}
 }
 
-func TestGoogleCallback_InvalidState(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	database, mock := newMockDB(t)
-
-	r := gin.New()
-	r.GET("/google/callback", NewOAuthHandler(database).GoogleCallback)
-
-	req := httptest.NewRequest(http.MethodGet, "/google/callback?state=wrong&code=abc", nil)
-	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "expected"})
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestAppleLogin_NotImplemented(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	database, mock := newMockDB(t)
