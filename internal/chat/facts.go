@@ -12,19 +12,19 @@ func (e *Engine) extractAndSaveFacts(ctx context.Context, userID, userMsg, aiMsg
 	normalized := strings.ToLower(userMsg)
 
 	if week := extractPregnancyWeek(normalized); week > 0 {
-		e.db.SaveOrUpdateFact(ctx, userID, "pregnancy_week", fmt.Sprintf("%d", week), chatFactConfidence)
+		_, _ = e.db.SaveOrUpdateFact(ctx, userID, "pregnancy_week", fmt.Sprintf("%d", week), chatFactConfidence)
 	}
 
 	if value, ok := extractFirstPregnancy(normalized); ok {
-		e.db.SaveOrUpdateFact(ctx, userID, "is_first_pregnancy", value, chatFactConfidence)
+		_, _ = e.db.SaveOrUpdateFact(ctx, userID, "is_first_pregnancy", value, chatFactConfidence)
 	}
 
 	if diet := extractDietPreference(normalized); diet != "" {
-		e.db.SaveOrUpdateFact(ctx, userID, "diet", diet, chatFactConfidence)
+		_, _ = e.db.SaveOrUpdateFact(ctx, userID, "diet", diet, chatFactConfidence)
 	}
 
 	if concern := extractPrimaryConcernFact(normalized); concern != "" {
-		e.db.SaveOrUpdateFact(ctx, userID, "primary_concern", concern, chatFactConfidence)
+		_, _ = e.db.SaveOrUpdateFact(ctx, userID, "primary_concern", concern, chatFactConfidence)
 	}
 }
 
@@ -78,8 +78,8 @@ func extractFirstPregnancy(normalized string) (string, bool) {
 
 func extractDietPreference(normalized string) string {
 	dietPatterns := map[string]string{
-		"vegetarian": "vegetarian",
-		"vegan":      "vegan",
+		"vegetarian":  "vegetarian",
+		"vegan":       "vegan",
 		"pescatarian": "pescatarian",
 		"gluten free": "gluten-free",
 		"gluten-free": "gluten-free",

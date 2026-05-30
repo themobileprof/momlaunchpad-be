@@ -88,11 +88,11 @@ func (db *DB) Close() error {
 
 // User represents a user in the database
 type User struct {
-	ID                   string     `json:"id"`
-	Email                string     `json:"email"`
-	PasswordHash         string     `json:"-"` // Don't expose password hash
-	Name                 *string    `json:"name"`
-	Language             string     `json:"language"`
+	ID                    string     `json:"id"`
+	Email                 string     `json:"email"`
+	PasswordHash          string     `json:"-"` // Don't expose password hash
+	Name                  *string    `json:"name"`
+	Language              string     `json:"language"`
 	Currency              string     `json:"currency"`
 	PregnancyWeek         *int       `json:"pregnancy_week"`
 	PregnancyStartDate    *time.Time `json:"pregnancy_start_date"`
@@ -101,10 +101,10 @@ type User struct {
 	PrimaryConcern        *string    `json:"primary_concern"`
 	DietPreference        *string    `json:"diet_preference"`
 	SavingsGoal           *float64   `json:"savings_goal"`
-	IsAdmin              bool       `json:"is_admin"`
+	IsAdmin               bool       `json:"is_admin"`
 	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 // Conversation represents a chat session

@@ -1,7 +1,7 @@
 package deepseek
 
 import (
-    "github.com/themobileprof/momlaunchpad-be/pkg/llm"
+	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
 // Alias types for backward compatibility or convenience if needed,

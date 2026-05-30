@@ -62,7 +62,7 @@ func TestCreateVitalReading_Success(t *testing.T) {
 	r.POST("/vitals", NewVitalsHandler(database).CreateVitalReading)
 
 	req, err := jsonRequest(http.MethodPost, "/vitals", map[string]any{
-		"recorded_at":               now.Format(time.RFC3339),
+		"recorded_at":             now.Format(time.RFC3339),
 		"blood_pressure_systolic": systolic,
 	})
 	if err != nil {

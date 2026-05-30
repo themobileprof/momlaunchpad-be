@@ -11,16 +11,16 @@ import (
 
 // PromptRequest contains all information needed to build a super-prompt
 type PromptRequest struct {
-	UserID            string
-	UserMessage       string
-	Language          string
-	IsSmallTalk          bool
-	IsConversationStart  bool
-	ShortTermMemory      []memory.Message
-	Facts             []memory.UserFact
-	RecentSymptoms    []map[string]interface{} // Recent symptom history
-	ConversationState *conversation.State      // Track conversation context
-	AIName            string                   // AI assistant name (e.g., "MomBot")
+	UserID              string
+	UserMessage         string
+	Language            string
+	IsSmallTalk         bool
+	IsConversationStart bool
+	ShortTermMemory     []memory.Message
+	Facts               []memory.UserFact
+	RecentSymptoms      []map[string]interface{} // Recent symptom history
+	ConversationState   *conversation.State      // Track conversation context
+	AIName              string                   // AI assistant name (e.g., "MomBot")
 }
 
 // Builder constructs prompts for the DeepSeek API

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -111,15 +112,15 @@ func (c *HTTPClient) toGeminiRequest(req llm.ChatRequest) geminiRequest {
 		if role == "assistant" {
 			role = "model"
 		} else if role == "system" {
-			// Gemini doesn't always support system role in contents depending on version, 
+			// Gemini doesn't always support system role in contents depending on version,
 			// but modern models do or we can prepend to first user message.
-			// Ideally we use specialized systemInstruction field, but for simplicity/general compatibility 
+			// Ideally we use specialized systemInstruction field, but for simplicity/general compatibility
 			// let's try mapping system to user with a prefix or just user if model supports it.
 			// Actually gemini-1.5-pro supports system instructions, but older gemini-pro might not.
 			// Let's coerce system to "user" for maximum compatibility in this simple REST implementation
-			// or assume user is using a model that handles it. 
+			// or assume user is using a model that handles it.
 			// Safest fallback for "gemini-pro" is usually prepending to prompt or using "user".
-			role = "user" 
+			role = "user"
 		}
 
 		contents[i] = geminiContent{
@@ -143,7 +144,7 @@ func (c *HTTPClient) toGeminiRequest(req llm.ChatRequest) geminiRequest {
 func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req llm.ChatRequest) (<-chan llm.ChatChunk, error) {
 	// Gemini streaming endpoint: ...:streamGenerateContent
 	url := fmt.Sprintf("%s/%s:streamGenerateContent?key=%s&alt=sse", c.baseURL, c.model, c.apiKey)
-	
+
 	gemReq := c.toGeminiRequest(req)
 	body, err := json.Marshal(gemReq)
 	if err != nil {
@@ -178,7 +179,7 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req llm.ChatReque
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
-					// Log error? 
+					log.Printf("gemini stream read error: %v", err)
 				}
 				break
 			}
@@ -204,13 +205,13 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req llm.ChatReque
 				if len(gResp.Candidates[0].Content.Parts) > 0 {
 					content = gResp.Candidates[0].Content.Parts[0].Text
 				}
-				
+
 				chunk := llm.ChatChunk{
 					Model: c.model,
 					Choices: []struct {
-						Index        int     `json:"index"`
-						Delta        llm.Delta   `json:"delta"`
-						FinishReason *string `json:"finish_reason"`
+						Index        int       `json:"index"`
+						Delta        llm.Delta `json:"delta"`
+						FinishReason *string   `json:"finish_reason"`
 					}{
 						{
 							Delta: llm.Delta{
@@ -219,7 +220,7 @@ func (c *HTTPClient) StreamChatCompletion(ctx context.Context, req llm.ChatReque
 						},
 					},
 				}
-				
+
 				select {
 				case ch <- chunk:
 				case <-ctx.Done():

@@ -31,9 +31,9 @@ func (h *WelcomeHandler) GetWelcome(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    result.Message,
-		"cache_date": result.CacheDate.Format("2006-01-02"),
-		"source":     result.Source,
+		"message":      result.Message,
+		"cache_date":   result.CacheDate.Format("2006-01-02"),
+		"source":       result.Source,
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

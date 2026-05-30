@@ -61,9 +61,9 @@ func (m *mockLLMClient) StreamChatCompletion(ctx context.Context, req llm.ChatRe
 		defer close(ch)
 		chunk := llm.ChatChunk{}
 		chunk.Choices = make([]struct {
-			Index        int            `json:"index"`
-			Delta        llm.Delta      `json:"delta"`
-			FinishReason *string        `json:"finish_reason"`
+			Index        int       `json:"index"`
+			Delta        llm.Delta `json:"delta"`
+			FinishReason *string   `json:"finish_reason"`
 		}, 1)
 		chunk.Choices[0].Delta.Content = "Test response"
 		ch <- chunk

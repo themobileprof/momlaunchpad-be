@@ -66,9 +66,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
 		token = c.GetHeader("Authorization")
-		if strings.HasPrefix(token, "Bearer ") {
-			token = strings.TrimPrefix(token, "Bearer ")
-		}
+		token = strings.TrimPrefix(token, "Bearer ")
 	}
 
 	if token == "" {
@@ -123,7 +121,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 		// Rate limiting
 		if !wsLimiter.Allow() {
-			h.sendError(conn, "Too many messages. Please slow down.")
+			_ = h.sendError(conn, "Too many messages. Please slow down.")
 			continue
 		}
 
@@ -131,11 +129,11 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		withinQuota, err := h.subManager.CheckQuota(c.Request.Context(), userID, "chat")
 		if err != nil {
 			log.Printf("Error checking quota for user %s: %v", userID, err)
-			h.sendError(conn, "Sorry, I encountered an error checking your quota.")
+			_ = h.sendError(conn, "Sorry, I encountered an error checking your quota.")
 			continue
 		}
 		if !withinQuota {
-			h.sendError(conn, "You've reached your message quota for this period. Please upgrade your plan or try again later.")
+			_ = h.sendError(conn, "You've reached your message quota for this period. Please upgrade your plan or try again later.")
 			continue
 		}
 
@@ -153,7 +151,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 		if _, err := h.engine.ProcessMessage(c.Request.Context(), req); err != nil {
 			log.Printf("Error processing message: %v", err)
-			h.sendError(conn, "Sorry, I encountered an error processing your message.")
+			_ = h.sendError(conn, "Sorry, I encountered an error processing your message.")
 			continue
 		}
 

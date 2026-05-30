@@ -140,11 +140,11 @@ func TestExtractFrequency(t *testing.T) {
 
 func TestFormatSymptomForPrompt(t *testing.T) {
 	s := Symptom{
-		SymptomType:          "nausea",
-		OnsetTime:            "yesterday",
-		Severity:             "mild",
-		Frequency:            "daily",
-		AssociatedSymptoms:   []string{"fatigue"},
+		SymptomType:        "nausea",
+		OnsetTime:          "yesterday",
+		Severity:           "mild",
+		Frequency:          "daily",
+		AssociatedSymptoms: []string{"fatigue"},
 	}
 	got := FormatSymptomForPrompt(s)
 	if got == "" {

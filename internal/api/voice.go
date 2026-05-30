@@ -254,7 +254,7 @@ func (r *VoiceResponder) SendMessage(content string) error {
 // SendCalendarSuggestion handles calendar suggestions in voice
 func (r *VoiceResponder) SendCalendarSuggestion(suggestion calendar.Suggestion) error {
 	// For voice, we'll just mention it verbally
-	message := fmt.Sprintf(" Would you like me to remind you about this? Say yes or no after the beep.")
+	message := " Would you like me to remind you about this? Say yes or no after the beep."
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.response.WriteString(message)
@@ -351,7 +351,7 @@ func (h *VoiceHandler) getUserByPhone(ctx context.Context, phone string) (*db.Us
 	`
 
 	user := &db.User{}
-	err := h.db.QueryRowContext(ctx, query, phone, phone).Scan(
+	err := h.db.QueryRowContext(ctx, query, cleanPhone, cleanPhone).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
 		&user.Language, &user.ExpectedDeliveryDate, &user.SavingsGoal,
 		&user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,

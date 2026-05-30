@@ -120,9 +120,6 @@ func PerUser(requestsPerSecond float64, burst int) gin.HandlerFunc {
 type WebSocketLimiter struct {
 	limiter        *rate.Limiter
 	messagesPerMin int
-	messageCount   int
-	windowStart    time.Time
-	mu             sync.Mutex
 }
 
 // NewWebSocketLimiter creates a limiter for WebSocket messages
@@ -130,7 +127,6 @@ func NewWebSocketLimiter(messagesPerMinute int) *WebSocketLimiter {
 	return &WebSocketLimiter{
 		limiter:        rate.NewLimiter(rate.Limit(messagesPerMinute)/60.0, messagesPerMinute),
 		messagesPerMin: messagesPerMinute,
-		windowStart:    time.Now(),
 	}
 }
 

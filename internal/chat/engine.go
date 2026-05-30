@@ -146,7 +146,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 			if len(title) > 50 {
 				title = title[:47] + "..."
 			}
-			
+
 			newConv, err := e.db.CreateConversation(ctx, req.UserID, &title)
 			if err != nil {
 				return "", fmt.Errorf("failed to create conversation: %w", err)
@@ -155,7 +155,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 			log.Printf("Created new conversation: %s", conversationID)
 		}
 	}
-	
+
 	// Notify responder of conversation ID
 	req.Responder.SetConversationID(conversationID)
 
@@ -192,14 +192,14 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		if err := req.Responder.SendMessage(response); err != nil {
 			return conversationID, err
 		}
-		
+
 		// Also save assistant response
 		if _, err := e.db.SaveMessage(ctx, req.UserID, conversationID, "assistant", response); err != nil {
 			log.Printf("Failed to save assistant message: %v", err)
 		}
 
 		e.maybeGenerateConversationTitle(ctx, conversationID, req.Message, response, req.Responder)
-		
+
 		// Reset conversation state on small talk
 		e.convManager.Reset(req.UserID)
 		return conversationID, req.Responder.SendDone()
@@ -272,7 +272,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 	if e.circuitBreaker.State() == circuitbreaker.StateOpen {
 		log.Printf("Circuit breaker open, using fallback response")
 		fbResp := fallback.GetCircuitOpenResponse(req.Language)
-		req.Responder.SendMessage(fbResp.Content)
+		_ = req.Responder.SendMessage(fbResp.Content)
 		return conversationID, req.Responder.SendDone()
 	}
 
@@ -333,7 +333,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 	defer cancel()
 
 	chatReq := llm.ChatRequest{
-		Model:       "",    // Let client use default or we can inject it
+		Model:       "", // Let client use default or we can inject it
 		Messages:    messages,
 		Temperature: 0.7,
 		MaxTokens:   200,   // Limit to ~150 words for voice-friendly, concise responses
@@ -368,7 +368,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 			fbResp = fallback.GetFallbackResponse(result.Intent, req.Language)
 		}
 
-		req.Responder.SendMessage(fbResp.Content)
+		_ = req.Responder.SendMessage(fbResp.Content)
 		return conversationID, req.Responder.SendDone()
 	}
 
@@ -386,7 +386,7 @@ func (e *Engine) ProcessMessage(ctx context.Context, req ProcessRequest) (string
 		Content: assistantMsg,
 	})
 
-		e.extractAndSaveFacts(ctx, req.UserID, req.Message, assistantMsg)
+	e.extractAndSaveFacts(ctx, req.UserID, req.Message, assistantMsg)
 
 	e.maybeGenerateConversationTitle(ctx, conversationID, req.Message, assistantMsg, req.Responder)
 
