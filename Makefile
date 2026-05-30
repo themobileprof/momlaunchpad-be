@@ -5,7 +5,7 @@ ifneq (,$(wildcard .env))
     export
 endif
 
-.PHONY: help init test test-coverage test-watch dev build run clean migrate-up migrate-down docker-build docker-run
+.PHONY: help init test test-coverage test-watch dev build run clean migrate-up migrate-down docker-build docker-run create-admin
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -43,6 +43,9 @@ build: ## Build production binary
 
 run: build ## Run the built binary
 	./bin/momlaunchpad
+
+create-admin: ## Interactive CLI to create or promote an admin user
+	go run ./cmd/create-admin
 
 clean: ## Clean build artifacts
 	rm -rf bin/
