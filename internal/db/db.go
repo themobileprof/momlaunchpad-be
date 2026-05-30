@@ -150,6 +150,37 @@ type Reminder struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// DoctorVisit represents a prenatal/medical visit record (micro EMR).
+type DoctorVisit struct {
+	ID                     string
+	UserID                 string
+	VisitDate              time.Time
+	VisitType              string
+	ProviderName           *string
+	FacilityName           *string
+	ChiefComplaint         *string
+	ClinicalNotes          *string
+	Diagnosis              *string
+	TreatmentPlan          *string
+	FollowUpInstructions   *string
+	BloodPressureSystolic  *int
+	BloodPressureDiastolic *int
+	WeightKg               *float64
+	HeartRateBpm           *int
+	TemperatureCelsius     *float64
+	FundalHeightCm         *float64
+	FetalHeartRateBpm      *int
+	GestationalAgeWeeks    *int
+	Medications            []byte
+	LabResults             []byte
+	NextAppointmentAt      *time.Time
+	NextAppointmentNotes   *string
+	RecordedBy             string
+	ProviderUserID         *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 // Language represents a supported language
 type Language struct {
 	Code           string    `json:"code"`

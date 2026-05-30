@@ -143,6 +143,7 @@ func main() {
 	symptomHandler := api.NewSymptomHandler(database)
 	conversationHandler := api.NewConversationHandler(database)
 	profileHandler := api.NewProfileHandler(database)
+	doctorVisitHandler := api.NewDoctorVisitHandler(database)
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -239,6 +240,29 @@ func main() {
 		symptomGroup.GET("/recent", symptomHandler.GetRecentSymptoms)
 		symptomGroup.GET("/stats", symptomHandler.GetSymptomStats)
 		symptomGroup.PUT("/:id/resolve", symptomHandler.MarkSymptomResolved)
+	}
+
+	// Doctor visit records — patient self-service (micro EMR)
+	visitGroup := router.Group("/api/doctor-visits")
+	visitGroup.Use(middleware.JWTAuth(jwtSecret))
+	visitGroup.Use(middleware.PerUser(500.0/3600.0, 100))
+	{
+		visitGroup.GET("", doctorVisitHandler.ListVisits)
+		visitGroup.POST("", doctorVisitHandler.CreateVisit)
+		visitGroup.GET("/:id", doctorVisitHandler.GetVisit)
+		visitGroup.PUT("/:id", doctorVisitHandler.UpdateVisit)
+		visitGroup.DELETE("/:id", doctorVisitHandler.DeleteVisit)
+	}
+
+	// Clinician portal endpoints (provider auth placeholder — admin-only for now)
+	providerGroup := router.Group("/api/provider")
+	providerGroup.Use(middleware.JWTAuth(jwtSecret))
+	providerGroup.Use(middleware.ProviderOrAdmin())
+	{
+		providerGroup.GET("/patients/:patientId/doctor-visits", doctorVisitHandler.ProviderListPatientVisits)
+		providerGroup.POST("/doctor-visits", doctorVisitHandler.ProviderCreateVisit)
+		providerGroup.GET("/doctor-visits/:id", doctorVisitHandler.ProviderGetVisit)
+		providerGroup.PUT("/doctor-visits/:id", doctorVisitHandler.ProviderUpdateVisit)
 	}
 
 	// Conversation routes (protected)

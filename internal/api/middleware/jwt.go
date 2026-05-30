@@ -63,6 +63,20 @@ func JWTAuth(secret string) gin.HandlerFunc {
 	}
 }
 
+// ProviderOrAdmin restricts access to clinician portal endpoints until provider roles exist.
+// Today this requires admin; replace with provider-role checks when clinician accounts ship.
+func ProviderOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isAdmin, exists := c.Get("is_admin")
+		if !exists || !isAdmin.(bool) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Provider access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // AdminOnly middleware ensures the user is an admin
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
