@@ -21,6 +21,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
+	"github.com/themobileprof/momlaunchpad-be/internal/welcome"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
 	"github.com/themobileprof/momlaunchpad-be/pkg/gemini"
@@ -145,6 +146,17 @@ func main() {
 	profileHandler := api.NewProfileHandler(database)
 	doctorVisitHandler := api.NewDoctorVisitHandler(database)
 	vitalsHandler := api.NewVitalsHandler(database)
+
+	var welcomeGemini llm.Client
+	if geminiAPIKey != "" {
+		welcomeGemini = gemini.NewHTTPClient(gemini.Config{APIKey: geminiAPIKey})
+		log.Println("✅ Daily welcome messages will use Gemini")
+	} else {
+		log.Println("⚠️  GEMINI_API_KEY not set — welcome messages will use fallback templates")
+	}
+	welcomeSvc := welcome.NewService(database, welcomeGemini)
+	welcomeHandler := api.NewWelcomeHandler(welcomeSvc)
+
 	chatHandler := ws.NewChatHandler(
 		chatEngine,
 		database,
@@ -340,6 +352,7 @@ func main() {
 		profileGroup.GET("/profile", profileHandler.GetProfile)
 		profileGroup.PUT("/profile", profileHandler.UpdateProfile)
 		profileGroup.PUT("/onboarding", profileHandler.CompleteOnboarding)
+		profileGroup.GET("/welcome", welcomeHandler.GetWelcome)
 	}
 
 	// WebSocket chat route (protected via query param/header)
