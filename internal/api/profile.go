@@ -228,8 +228,10 @@ func (h *ProfileHandler) syncProfileFacts(ctx context.Context, userID string, up
 func resolvePregnancyTiming(weekPtr *int, eddPtr *time.Time, now time.Time) (int, time.Time, time.Time, error) {
 	switch {
 	case weekPtr != nil && eddPtr != nil:
+		// Week slider is the source of truth when both are supplied.
 		week := clampWeek(*weekPtr)
-		return week, *eddPtr, profile.PregnancyStartFromWeek(week, now), nil
+		edd := profile.EDDFromWeek(week, now)
+		return week, edd, profile.PregnancyStartFromWeek(week, now), nil
 	case weekPtr != nil:
 		week := clampWeek(*weekPtr)
 		edd := profile.EDDFromWeek(week, now)
