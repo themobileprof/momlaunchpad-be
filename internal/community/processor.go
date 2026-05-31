@@ -30,23 +30,13 @@ func NewProcessor(gemini, deepseek llm.Client) *Processor {
 	return &Processor{gemini: gemini, deepseek: deepseek}
 }
 
-const analysisPrompt = `Analyze this parenting community post and respond with JSON only (no markdown):
-{
-  "category": "<one interest key from: first_trimester, second_trimester, third_trimester, pregnancy_health, mental_health, nutrition, fitness, newborn_care, breastfeeding, baby_sleep, baby_health, first_time_moms, experienced_moms, dads_partners, single_parents, ask_midwife, ask_doctor, emotional_support, local_recommendations, local_services, events_meetups, introductions, success_stories>",
-  "scope": "local or global",
-  "medical_relevance": "none, general, or specialist",
-  "is_event": true/false,
-  "safety_flag": true if urgent medical/emergency/abuse/self-harm content,
-  "spam_score": 0.0 to 1.0,
-  "status": "active or pending_review (pending_review if safety_flag or spam_score >= 0.7)"
-}
-
-Post:
-`
-
 // AnalyzePost returns classification metadata for a post body.
-func (p *Processor) AnalyzePost(ctx context.Context, body string) PostAnalysis {
-	fallback := ruleBasedAnalysis(body)
+// validCategories lists enabled interest keys from the database catalog.
+func (p *Processor) AnalyzePost(ctx context.Context, body string, validCategories []string) PostAnalysis {
+	fallback := ruleBasedAnalysis(body, validCategories)
+	valid := interestKeySet(validCategories)
+
+	prompt := buildAnalysisPrompt(validCategories)
 
 	client := p.gemini
 	if client == nil {
@@ -58,7 +48,7 @@ func (p *Processor) AnalyzePost(ctx context.Context, body string) PostAnalysis {
 
 	resp, err := client.ChatCompletion(ctx, llm.ChatRequest{
 		Messages: []llm.ChatMessage{
-			{Role: "user", Content: analysisPrompt + body},
+			{Role: "user", Content: prompt + body},
 		},
 		MaxTokens:   256,
 		Temperature: 0.1,
@@ -77,10 +67,50 @@ func (p *Processor) AnalyzePost(ctx context.Context, body string) PostAnalysis {
 	}
 
 	normalizeAnalysis(&analysis)
-	if !IsValidInterest(analysis.Category) {
+	if !valid[analysis.Category] {
 		analysis.Category = fallback.Category
 	}
 	return analysis
+}
+
+func buildAnalysisPrompt(validCategories []string) string {
+	keys := strings.Join(validCategories, ", ")
+	if keys == "" {
+		keys = "introductions"
+	}
+	return `Analyze this parenting community post and respond with JSON only (no markdown):
+{
+  "category": "<one interest key from: ` + keys + `>",
+  "scope": "local or global",
+  "medical_relevance": "none, general, or specialist",
+  "is_event": true/false,
+  "safety_flag": true if urgent medical/emergency/abuse/self-harm content,
+  "spam_score": 0.0 to 1.0,
+  "status": "active or pending_review (pending_review if safety_flag or spam_score >= 0.7)"
+}
+
+Post:
+`
+}
+
+func interestKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
+}
+
+func defaultCategory(validCategories []string) string {
+	if len(validCategories) == 0 {
+		return "introductions"
+	}
+	for _, key := range validCategories {
+		if key == "introductions" {
+			return key
+		}
+	}
+	return validCategories[0]
 }
 
 func normalizeAnalysis(a *PostAnalysis) {
@@ -102,10 +132,11 @@ func normalizeAnalysis(a *PostAnalysis) {
 	}
 }
 
-func ruleBasedAnalysis(body string) PostAnalysis {
+func ruleBasedAnalysis(body string, validCategories []string) PostAnalysis {
 	lower := strings.ToLower(body)
+	defaultCat := defaultCategory(validCategories)
 	analysis := PostAnalysis{
-		Category:         "introductions",
+		Category:         defaultCat,
 		Scope:            "local",
 		MedicalRelevance: "none",
 		IsEvent:          false,
@@ -118,7 +149,9 @@ func ruleBasedAnalysis(body string) PostAnalysis {
 	for _, w := range eventWords {
 		if strings.Contains(lower, w) {
 			analysis.IsEvent = true
-			analysis.Category = "events_meetups"
+			if interestKeySet(validCategories)["events_meetups"] {
+				analysis.Category = "events_meetups"
+			}
 			break
 		}
 	}

@@ -20,7 +20,7 @@ const userSelectSQL = `
 	       pregnancy_week, pregnancy_start_date, expected_delivery_date,
 	       is_first_pregnancy, primary_concern, diet_preference,
 	       journey_stage, journey_stage_since, baby_birth_date, loss_date,
-	       profile_photo_url, country, state_province, city,
+	       profile_photo_url, country, country_code, state_province, city,
 	       community_onboarding_completed_at,
 	       savings_goal, is_admin, onboarding_completed_at, created_at, updated_at
 	FROM users`
@@ -35,7 +35,7 @@ func scanUser(scanner interface {
 		&user.ExpectedDeliveryDate, &user.IsFirstPregnancy, &user.PrimaryConcern,
 		&user.DietPreference, &user.JourneyStage, &user.JourneyStageSince,
 		&user.BabyBirthDate, &user.LossDate,
-		&user.ProfilePhotoURL, &user.Country, &user.StateProvince, &user.City,
+		&user.ProfilePhotoURL, &user.Country, &user.CountryCode, &user.StateProvince, &user.City,
 		&user.CommunityOnboardingAt,
 		&user.SavingsGoal, &user.IsAdmin, &user.OnboardingCompletedAt,
 		&user.CreatedAt, &user.UpdatedAt,
@@ -62,6 +62,7 @@ type UserProfileUpdate struct {
 	LossDate             *time.Time
 	ProfilePhotoURL      *string
 	Country              *string
+	CountryCode          *string
 	StateProvince        *string
 	City                 *string
 }
@@ -719,10 +720,11 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		    loss_date = COALESCE($12, loss_date),
 		    profile_photo_url = COALESCE($13, profile_photo_url),
 		    country = COALESCE($14, country),
-		    state_province = COALESCE($15, state_province),
-		    city = COALESCE($16, city),
+		    country_code = COALESCE($15, country_code),
+		    state_province = COALESCE($16, state_province),
+		    city = COALESCE($17, city),
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $17
+		WHERE id = $18
 	`
 
 	result, err := db.ExecContext(ctx, query,
@@ -740,6 +742,7 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		update.LossDate,
 		update.ProfilePhotoURL,
 		update.Country,
+		update.CountryCode,
 		update.StateProvince,
 		update.City,
 		userID,

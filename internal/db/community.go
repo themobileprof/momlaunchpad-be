@@ -57,6 +57,7 @@ type CommunityReply struct {
 type CommunityEvent struct {
 	ID             string
 	PostID         string
+	EventType      *string
 	Title          string
 	Description    *string
 	Venue          *string
@@ -97,17 +98,18 @@ type CommunityReport struct {
 }
 
 // CompleteCommunityOnboarding saves location and marks community setup done.
-func (db *DB) CompleteCommunityOnboarding(ctx context.Context, userID, country, state, city string) error {
+func (db *DB) CompleteCommunityOnboarding(ctx context.Context, userID, countryCode, country, state, city string) error {
 	query := `
 		UPDATE users
 		SET country = $1,
-		    state_province = $2,
-		    city = $3,
+		    country_code = $2,
+		    state_province = $3,
+		    city = $4,
 		    community_onboarding_completed_at = CURRENT_TIMESTAMP,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $4
+		WHERE id = $5
 	`
-	result, err := db.ExecContext(ctx, query, country, state, city, userID)
+	result, err := db.ExecContext(ctx, query, country, countryCode, state, city, userID)
 	if err != nil {
 		return fmt.Errorf("complete community onboarding: %w", err)
 	}
@@ -552,12 +554,12 @@ func (db *DB) ToggleReplyLike(ctx context.Context, replyID, userID string) (like
 func (db *DB) CreateCommunityEvent(ctx context.Context, event *CommunityEvent) (*CommunityEvent, error) {
 	query := `
 		INSERT INTO community_events (
-			post_id, title, description, venue, starts_at, ends_at, country, state_province, city
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			post_id, event_type, title, description, venue, starts_at, ends_at, country, state_province, city
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		RETURNING id, interested_count, created_at
 	`
 	err := db.QueryRowContext(ctx, query,
-		event.PostID, event.Title, event.Description, event.Venue,
+		event.PostID, event.EventType, event.Title, event.Description, event.Venue,
 		event.StartsAt, event.EndsAt, event.Country, event.StateProvince, event.City,
 	).Scan(&event.ID, &event.InterestedCount, &event.CreatedAt)
 	if err != nil {
@@ -569,7 +571,7 @@ func (db *DB) CreateCommunityEvent(ctx context.Context, event *CommunityEvent) (
 // GetCommunityEventByPostID loads event details.
 func (db *DB) GetCommunityEventByPostID(ctx context.Context, postID, viewerID string) (*CommunityEvent, error) {
 	query := `
-		SELECT e.id, e.post_id, e.title, e.description, e.venue, e.starts_at, e.ends_at,
+		SELECT e.id, e.post_id, e.event_type, e.title, e.description, e.venue, e.starts_at, e.ends_at,
 		       e.country, e.state_province, e.city, e.interested_count, e.created_at,
 		       EXISTS(SELECT 1 FROM community_event_interests ei WHERE ei.event_id = e.id AND ei.user_id = $2)
 		FROM community_events e
@@ -577,7 +579,7 @@ func (db *DB) GetCommunityEventByPostID(ctx context.Context, postID, viewerID st
 	`
 	event := &CommunityEvent{}
 	err := db.QueryRowContext(ctx, query, postID, viewerID).Scan(
-		&event.ID, &event.PostID, &event.Title, &event.Description, &event.Venue,
+		&event.ID, &event.PostID, &event.EventType, &event.Title, &event.Description, &event.Venue,
 		&event.StartsAt, &event.EndsAt, &event.Country, &event.StateProvince, &event.City,
 		&event.InterestedCount, &event.CreatedAt, &event.InterestedByMe,
 	)

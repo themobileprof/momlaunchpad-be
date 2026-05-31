@@ -106,6 +106,7 @@ type User struct {
 	LossDate              *time.Time `json:"loss_date"`
 	ProfilePhotoURL       *string    `json:"profile_photo_url"`
 	Country               *string    `json:"country"`
+	CountryCode           *string    `json:"country_code"`
 	StateProvince         *string    `json:"state_province"`
 	City                  *string    `json:"city"`
 	CommunityOnboardingAt *time.Time `json:"community_onboarding_completed_at,omitempty"`
