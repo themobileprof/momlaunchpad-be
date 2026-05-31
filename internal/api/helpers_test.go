@@ -18,6 +18,7 @@ var userRowColumns = []string{
 	"id", "email", "password_hash", "display_name", "preferred_language", "currency",
 	"pregnancy_week", "pregnancy_start_date", "expected_delivery_date",
 	"is_first_pregnancy", "primary_concern", "diet_preference",
+	"journey_stage", "journey_stage_since", "baby_birth_date", "loss_date",
 	"savings_goal", "is_admin", "onboarding_completed_at", "created_at", "updated_at",
 }
 
@@ -35,7 +36,7 @@ func mockUserRows(userID, email string) *sqlmock.Rows {
 	now := time.Now()
 	name := "Test User"
 	return sqlmock.NewRows(userRowColumns).
-		AddRow(userID, email, "", name, "en", "", nil, nil, nil, nil, nil, nil, nil, false, nil, now, now)
+		AddRow(userID, email, "", name, "en", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, now, now)
 }
 
 func ginWithUserID(userID string) *gin.Engine {

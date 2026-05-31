@@ -19,6 +19,7 @@ const userSelectSQL = `
 	SELECT id, email, password_hash, display_name, preferred_language, currency,
 	       pregnancy_week, pregnancy_start_date, expected_delivery_date,
 	       is_first_pregnancy, primary_concern, diet_preference,
+	       journey_stage, journey_stage_since, baby_birth_date, loss_date,
 	       savings_goal, is_admin, onboarding_completed_at, created_at, updated_at
 	FROM users`
 
@@ -30,7 +31,9 @@ func scanUser(scanner interface {
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
 		&user.Language, &user.Currency, &user.PregnancyWeek, &user.PregnancyStartDate,
 		&user.ExpectedDeliveryDate, &user.IsFirstPregnancy, &user.PrimaryConcern,
-		&user.DietPreference, &user.SavingsGoal, &user.IsAdmin, &user.OnboardingCompletedAt,
+		&user.DietPreference, &user.JourneyStage, &user.JourneyStageSince,
+		&user.BabyBirthDate, &user.LossDate,
+		&user.SavingsGoal, &user.IsAdmin, &user.OnboardingCompletedAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -49,6 +52,10 @@ type UserProfileUpdate struct {
 	IsFirstPregnancy     *bool
 	PrimaryConcern       *string
 	DietPreference       *string
+	JourneyStage         *string
+	JourneyStageSince    *time.Time
+	BabyBirthDate        *time.Time
+	LossDate             *time.Time
 }
 
 // CreateUser creates a new user
@@ -698,8 +705,12 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		    is_first_pregnancy = COALESCE($6, is_first_pregnancy),
 		    primary_concern = COALESCE($7, primary_concern),
 		    diet_preference = COALESCE($8, diet_preference),
+		    journey_stage = COALESCE($9, journey_stage),
+		    journey_stage_since = COALESCE($10, journey_stage_since),
+		    baby_birth_date = COALESCE($11, baby_birth_date),
+		    loss_date = COALESCE($12, loss_date),
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $9
+		WHERE id = $13
 	`
 
 	result, err := db.ExecContext(ctx, query,
@@ -711,6 +722,10 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		update.IsFirstPregnancy,
 		update.PrimaryConcern,
 		update.DietPreference,
+		update.JourneyStage,
+		update.JourneyStageSince,
+		update.BabyBirthDate,
+		update.LossDate,
 		userID,
 	)
 	if err != nil {

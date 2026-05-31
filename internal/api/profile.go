@@ -17,6 +17,7 @@ import (
 const profileFactConfidence = 1.0
 
 var profileFactKeys = map[string]bool{
+	"journey_stage":      true,
 	"pregnancy_week":     true,
 	"is_first_pregnancy": true,
 	"primary_concern":    true,
@@ -38,6 +39,10 @@ type ProfileResponse struct {
 	Name                 string            `json:"name"`
 	Language             string            `json:"language"`
 	OnboardingCompleted  bool              `json:"onboarding_completed"`
+	JourneyStage         string            `json:"journey_stage,omitempty"`
+	JourneyStageSince    *time.Time        `json:"journey_stage_since,omitempty"`
+	BabyBirthDate        *time.Time        `json:"baby_birth_date,omitempty"`
+	LossDate             *time.Time        `json:"loss_date,omitempty"`
 	PregnancyWeek        *int              `json:"pregnancy_week,omitempty"`
 	ExpectedDeliveryDate *time.Time        `json:"expected_delivery_date,omitempty"`
 	PregnancyStartDate   *time.Time        `json:"pregnancy_start_date,omitempty"`
@@ -52,8 +57,11 @@ type ProfileResponse struct {
 type ProfileSaveRequest struct {
 	Name                 string     `json:"name"`
 	Language             string     `json:"language"`
+	JourneyStage         string     `json:"journey_stage"`
 	PregnancyWeek        *int       `json:"pregnancy_week"`
 	ExpectedDeliveryDate *time.Time `json:"expected_delivery_date"`
+	BabyBirthDate        *time.Time `json:"baby_birth_date"`
+	LossDate             *time.Time `json:"loss_date"`
 	IsFirstPregnancy     *bool      `json:"is_first_pregnancy"`
 	PrimaryConcern       *string    `json:"primary_concern"`
 	DietPreference       *string    `json:"diet_preference"`
@@ -90,6 +98,13 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 
 	user, facts, err := h.saveProfile(c, userID, req, false)
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid journey transition") ||
+			strings.Contains(err.Error(), "journey_stage") ||
+			strings.Contains(err.Error(), "baby_birth_date") ||
+			strings.Contains(err.Error(), "pregnancy_week") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -107,13 +122,24 @@ func (h *ProfileHandler) CompleteOnboarding(c *gin.Context) {
 		return
 	}
 
-	if req.PregnancyWeek == nil && req.ExpectedDeliveryDate == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pregnancy_week or expected_delivery_date is required"})
+	stage, err := profile.NormalizeStage(req.JourneyStage)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.JourneyStage = stage
+
+	if err := profile.ValidateStageProfile(stage, stageSaveInput(req), true); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	user, facts, err := h.saveProfile(c, userID, req, true)
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid journey transition") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -129,6 +155,14 @@ func (h *ProfileHandler) saveProfile(
 ) (*db.User, []db.UserFact, error) {
 	ctx := c.Request.Context()
 	now := time.Now()
+
+	currentUser, err := h.db.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if currentUser == nil {
+		return nil, nil, fmt.Errorf("user not found")
+	}
 
 	language := req.Language
 	if language == "" {
@@ -147,6 +181,41 @@ func (h *ProfileHandler) saveProfile(
 		IsFirstPregnancy: req.IsFirstPregnancy,
 		PrimaryConcern:   trimOptionalString(req.PrimaryConcern),
 		DietPreference:   trimOptionalString(req.DietPreference),
+		BabyBirthDate:    req.BabyBirthDate,
+		LossDate:         req.LossDate,
+	}
+
+	stage := strings.TrimSpace(req.JourneyStage)
+	if stage == "" && currentUser.JourneyStage != nil {
+		stage = *currentUser.JourneyStage
+	}
+	if stage != "" {
+		normalized, err := profile.NormalizeStage(stage)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		currentStage := ""
+		if currentUser.JourneyStage != nil {
+			currentStage = *currentUser.JourneyStage
+		}
+		if currentStage != "" && currentStage != normalized && !profile.CanTransition(currentStage, normalized) {
+			return nil, nil, fmt.Errorf("invalid journey transition from %s to %s", currentStage, normalized)
+		}
+
+		validateInput := mergedStageInput(currentUser, req)
+		validateInput.Stage = normalized
+		if markComplete || currentStage != normalized {
+			if err := profile.ValidateStageProfile(normalized, validateInput, markComplete); err != nil {
+				return nil, nil, err
+			}
+		}
+
+		update.JourneyStage = &normalized
+		if currentStage != normalized || currentUser.JourneyStageSince == nil {
+			since := dateOnly(now)
+			update.JourneyStageSince = &since
+		}
 	}
 
 	if req.PregnancyWeek != nil || req.ExpectedDeliveryDate != nil {
@@ -194,6 +263,12 @@ func (h *ProfileHandler) saveProfile(
 }
 
 func (h *ProfileHandler) syncProfileFacts(ctx context.Context, userID string, update db.UserProfileUpdate) error {
+	if update.JourneyStage != nil {
+		if _, err := h.db.SaveOrUpdateFact(ctx, userID, "journey_stage", *update.JourneyStage, profileFactConfidence); err != nil {
+			return err
+		}
+	}
+
 	if update.PregnancyWeek != nil {
 		if _, err := h.db.SaveOrUpdateFact(ctx, userID, "pregnancy_week", strconv.Itoa(*update.PregnancyWeek), profileFactConfidence); err != nil {
 			return err
@@ -270,6 +345,10 @@ func buildProfileResponse(user *db.User, facts []db.UserFact) ProfileResponse {
 		Name:                 name,
 		Language:             user.Language,
 		OnboardingCompleted:  user.OnboardingCompletedAt != nil,
+		JourneyStage:         journeyStageValue(user),
+		JourneyStageSince:    user.JourneyStageSince,
+		BabyBirthDate:        user.BabyBirthDate,
+		LossDate:             user.LossDate,
 		PregnancyWeek:        pregnancyWeek,
 		ExpectedDeliveryDate: user.ExpectedDeliveryDate,
 		PregnancyStartDate:   user.PregnancyStartDate,
@@ -279,6 +358,49 @@ func buildProfileResponse(user *db.User, facts []db.UserFact) ProfileResponse {
 		LearnedFacts:         learnedFacts,
 		Facts:                allFacts,
 	}
+}
+
+func journeyStageValue(user *db.User) string {
+	if user.JourneyStage != nil && *user.JourneyStage != "" {
+		return *user.JourneyStage
+	}
+	if user.PregnancyWeek != nil || user.ExpectedDeliveryDate != nil {
+		return profile.StagePregnant
+	}
+	return ""
+}
+
+func stageSaveInput(req ProfileSaveRequest) profile.StageSaveInput {
+	return profile.StageSaveInput{
+		Stage:         req.JourneyStage,
+		PregnancyWeek: req.PregnancyWeek,
+		ExpectedDue:   req.ExpectedDeliveryDate,
+		BabyBirthDate: req.BabyBirthDate,
+		LossDate:      req.LossDate,
+		IsFirstPreg:   req.IsFirstPregnancy,
+	}
+}
+
+func mergedStageInput(current *db.User, req ProfileSaveRequest) profile.StageSaveInput {
+	input := stageSaveInput(req)
+	if input.PregnancyWeek == nil {
+		input.PregnancyWeek = current.PregnancyWeek
+	}
+	if input.ExpectedDue == nil {
+		input.ExpectedDue = current.ExpectedDeliveryDate
+	}
+	if input.BabyBirthDate == nil {
+		input.BabyBirthDate = current.BabyBirthDate
+	}
+	if input.LossDate == nil {
+		input.LossDate = current.LossDate
+	}
+	return input
+}
+
+func dateOnly(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
 }
 
 func mapFacts(facts []db.UserFact) map[string]string {

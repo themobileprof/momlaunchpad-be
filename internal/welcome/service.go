@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
+	"github.com/themobileprof/momlaunchpad-be/internal/profile"
 	"github.com/themobileprof/momlaunchpad-be/pkg/llm"
 )
 
@@ -102,18 +103,16 @@ func (s *Service) generateMessage(ctx context.Context, user *db.User, contextTex
 
 func buildWelcomePrompt(user *db.User, contextText string) string {
 	name := displayFirstName(user)
-	weekLine := ""
-	if user.PregnancyWeek != nil {
-		weekLine = fmt.Sprintf("They are at pregnancy week %d.\n", *user.PregnancyWeek)
-	}
+	stageLine := journeyContextLine(user)
 
-	return fmt.Sprintf(`You are a warm, supportive pregnancy companion in a mobile app.
+	return fmt.Sprintf(`You are a warm, supportive companion for women in a mobile app — through trying to conceive, pregnancy, postpartum recovery, and pregnancy loss.
 
 Write ONE personalized welcome message for the user below.
 
 Rules:
 - Greet them by first name (%s)
 - %sKeep it warm, encouraging, and specific to their context when data is available
+- Focus on the woman's wellbeing (physical and emotional), even after birth
 - Reference at most 2 health items from the context (symptoms, vitals, visits, appointments) — supportive tone, never alarming
 - Do NOT invent medical facts not present in the context
 - Maximum %d words (~4 short sentences). Must fit on a phone screen without scrolling
@@ -121,7 +120,43 @@ Rules:
 - Output ONLY the message text, no quotes or labels
 
 User health context:
-%s`, name, weekLine, maxWelcomeWords, contextText)
+%s`, name, stageLine, maxWelcomeWords, contextText)
+}
+
+func journeyContextLine(user *db.User) string {
+	stage := journeyStageValue(user)
+	switch stage {
+	case profile.StageTTC:
+		return "They are trying to conceive.\n"
+	case profile.StagePregnant:
+		if user.PregnancyWeek != nil {
+			return fmt.Sprintf("They are currently pregnant at week %d.\n", *user.PregnancyWeek)
+		}
+		return "They are currently pregnant.\n"
+	case profile.StagePostpartum:
+		if user.BabyBirthDate != nil {
+			weeks := profile.WeeksPostpartum(*user.BabyBirthDate, time.Now())
+			return fmt.Sprintf("They are %d weeks postpartum — focus on the mother's recovery and wellbeing.\n", weeks)
+		}
+		return "They are in postpartum recovery — focus on the mother's wellbeing.\n"
+	case profile.StageMiscarriage:
+		return "They experienced a pregnancy loss — be especially gentle, validating, and non-clinical.\n"
+	default:
+		if user.PregnancyWeek != nil {
+			return fmt.Sprintf("They are at pregnancy week %d.\n", *user.PregnancyWeek)
+		}
+		return ""
+	}
+}
+
+func journeyStageValue(user *db.User) string {
+	if user.JourneyStage != nil && *user.JourneyStage != "" {
+		return *user.JourneyStage
+	}
+	if user.PregnancyWeek != nil || user.ExpectedDeliveryDate != nil {
+		return profile.StagePregnant
+	}
+	return ""
 }
 
 func (s *Service) completeWithLLM(ctx context.Context, client llm.Client, prompt string) (string, error) {
@@ -156,11 +191,22 @@ func (s *Service) buildHealthContext(ctx context.Context, userID string, user *d
 
 	b.WriteString("Profile:\n")
 	b.WriteString(fmt.Sprintf("- Name: %s\n", displayName(user)))
+	if stage := journeyStageValue(user); stage != "" {
+		b.WriteString(fmt.Sprintf("- Journey stage: %s\n", profile.StageLabel(stage)))
+	}
 	if user.PregnancyWeek != nil {
 		b.WriteString(fmt.Sprintf("- Pregnancy week: %d\n", *user.PregnancyWeek))
 	}
 	if user.ExpectedDeliveryDate != nil {
 		b.WriteString(fmt.Sprintf("- Expected delivery: %s\n", user.ExpectedDeliveryDate.Format("2006-01-02")))
+	}
+	if user.BabyBirthDate != nil {
+		b.WriteString(fmt.Sprintf("- Baby birth date: %s\n", user.BabyBirthDate.Format("2006-01-02")))
+		weeks := profile.WeeksPostpartum(*user.BabyBirthDate, time.Now())
+		b.WriteString(fmt.Sprintf("- Weeks postpartum: %d\n", weeks))
+	}
+	if user.LossDate != nil {
+		b.WriteString(fmt.Sprintf("- Loss date: %s\n", user.LossDate.Format("2006-01-02")))
 	}
 	if user.PrimaryConcern != nil && *user.PrimaryConcern != "" {
 		b.WriteString(fmt.Sprintf("- Primary concern: %s\n", *user.PrimaryConcern))
@@ -255,14 +301,32 @@ func (s *Service) buildHealthContext(ctx context.Context, userID string, user *d
 
 func fallbackWelcome(user *db.User) string {
 	name := displayFirstName(user)
-	week := ""
-	if user.PregnancyWeek != nil {
-		week = fmt.Sprintf(" Week %d is a big milestone—", *user.PregnancyWeek)
+	switch journeyStageValue(user) {
+	case profile.StageTTC:
+		return fmt.Sprintf(
+			"Hi %s! However your TTC journey looks today, you deserve support and care. We're here whenever you want to talk things through.",
+			name,
+		)
+	case profile.StagePostpartum:
+		return fmt.Sprintf(
+			"Hi %s! Postpartum is a lot — your recovery matters just as much as everything else. Be gentle with yourself today.",
+			name,
+		)
+	case profile.StageMiscarriage:
+		return fmt.Sprintf(
+			"Hi %s. We're holding space for you — there's no right way to feel. Reach out whenever you need a listening ear.",
+			name,
+		)
+	default:
+		week := ""
+		if user.PregnancyWeek != nil {
+			week = fmt.Sprintf(" Week %d is a big milestone—", *user.PregnancyWeek)
+		}
+		return fmt.Sprintf(
+			"Hi %s!%s you're doing meaningful work caring for yourself and your growing baby. Keep listening to your body and reach out to your care team with any concerns.",
+			name, week,
+		)
 	}
-	return fmt.Sprintf(
-		"Hi %s!%syou and your baby are doing great work together. Keep up your prenatal care, take medications as prescribed, and reach out to your care team with any concerns.",
-		name, week,
-	)
 }
 
 func displayName(user *db.User) string {

@@ -90,7 +90,7 @@ func TestAuthLogin_Success(t *testing.T) {
 	}
 
 	rows := sqlmock.NewRows(userRowColumns).
-		AddRow(userID, "user@example.com", string(hash), "Test User", "en", "", nil, nil, nil, nil, nil, nil, nil, false, nil, time.Now(), time.Now())
+		AddRow(userID, "user@example.com", string(hash), "Test User", "en", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, time.Now(), time.Now())
 
 	mock.ExpectQuery(`FROM users`).
 		WithArgs("user@example.com").

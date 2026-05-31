@@ -100,6 +100,10 @@ type User struct {
 	IsFirstPregnancy      *bool      `json:"is_first_pregnancy"`
 	PrimaryConcern        *string    `json:"primary_concern"`
 	DietPreference        *string    `json:"diet_preference"`
+	JourneyStage          *string    `json:"journey_stage"`
+	JourneyStageSince     *time.Time `json:"journey_stage_since"`
+	BabyBirthDate         *time.Time `json:"baby_birth_date"`
+	LossDate              *time.Time `json:"loss_date"`
 	SavingsGoal           *float64   `json:"savings_goal"`
 	IsAdmin               bool       `json:"is_admin"`
 	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty"`

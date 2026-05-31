@@ -99,7 +99,7 @@ func TestBuildProfileResponse(t *testing.T) {
 	}
 }
 
-func TestProfileCompleteOnboarding_RequiresPregnancyTiming(t *testing.T) {
+func TestProfileCompleteOnboarding_RequiresJourneyStage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	database, mock := newMockDB(t)
 

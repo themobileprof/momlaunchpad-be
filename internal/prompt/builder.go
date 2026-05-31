@@ -99,8 +99,8 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 
 	// Base instruction with dynamic name
 	sb.WriteString(fmt.Sprintf("You are %s, a knowledgeable and empathetic assistant. ", aiName))
-	sb.WriteString("Your role is to provide accurate, helpful, and supportive information about pregnancy, symptoms, and related topics. ")
-	sb.WriteString("\n\n")
+	sb.WriteString("Your role is to provide accurate, helpful, and supportive information for women across trying to conceive, pregnancy, postpartum recovery, and pregnancy loss. ")
+	sb.WriteString("Always center the woman's wellbeing — including after birth.\n\n")
 
 	// Voice-friendly response style
 	sb.WriteString("RESPONSE STYLE:\n")
@@ -162,7 +162,12 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 	if len(req.Facts) > 0 {
 		sb.WriteString("User Context:\n")
 
-		// Pregnancy stage (high priority)
+		// Journey and pregnancy stage (high priority)
+		journeyStage := getFactValue(req.Facts, "journey_stage")
+		if journeyStage != "" {
+			sb.WriteString(fmt.Sprintf("- Journey stage: %s\n", journeyStage))
+		}
+
 		pregnancyWeek := getFactValue(req.Facts, "pregnancy_week")
 		if pregnancyWeek != "" {
 			sb.WriteString(fmt.Sprintf("- Pregnancy Week: %s\n", pregnancyWeek))
@@ -180,6 +185,7 @@ func (b *Builder) buildSystemPrompt(req PromptRequest) string {
 
 		// Other relevant facts
 		skipKeys := map[string]bool{
+			"journey_stage":      true,
 			"pregnancy_week":     true,
 			"is_first_pregnancy": true,
 			"primary_concern":    true,
