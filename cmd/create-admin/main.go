@@ -131,12 +131,13 @@ func createNewAdmin(ctx context.Context, reader *bufio.Reader, database *db.DB, 
 	}
 
 	passwordDefault := os.Getenv("ADMIN_INITIAL_PASSWORD")
-	password, err := promptPassword("Password (min 8 characters)", passwordDefault)
+	stdin := bufio.NewReader(os.Stdin)
+	password, err := promptPasswordFrom(stdin, "Password (min 8 characters)", passwordDefault)
 	if err != nil {
 		return err
 	}
 
-	confirm, err := promptPassword("Confirm password", "")
+	confirm, err := promptPasswordFrom(stdin, "Confirm password", "")
 	if err != nil {
 		return err
 	}
@@ -169,11 +170,12 @@ func createNewAdmin(ctx context.Context, reader *bufio.Reader, database *db.DB, 
 
 func setPassword(ctx context.Context, reader *bufio.Reader, database *db.DB, userID string) error {
 	_ = reader
-	password, err := promptPassword("New password (min 8 characters)", "")
+	stdin := bufio.NewReader(os.Stdin)
+	password, err := promptPasswordFrom(stdin, "New password (min 8 characters)", "")
 	if err != nil {
 		return err
 	}
-	confirm, err := promptPassword("Confirm new password", "")
+	confirm, err := promptPasswordFrom(stdin, "Confirm new password", "")
 	if err != nil {
 		return err
 	}
@@ -239,6 +241,10 @@ func promptYesNo(reader *bufio.Reader, question string, defaultYes bool) (bool, 
 }
 
 func promptPassword(label, defaultValue string) (string, error) {
+	return promptPasswordFrom(bufio.NewReader(os.Stdin), label, defaultValue)
+}
+
+func promptPasswordFrom(reader *bufio.Reader, label, defaultValue string) (string, error) {
 	if defaultValue != "" {
 		fmt.Printf("%s (Enter to use ADMIN_INITIAL_PASSWORD from .env): ", label)
 	} else {
@@ -254,7 +260,7 @@ func promptPassword(label, defaultValue string) (string, error) {
 		}
 		password = string(bytes)
 	} else {
-		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		line, err := reader.ReadString('\n')
 		if err != nil {
 			return "", err
 		}

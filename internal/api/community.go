@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -328,6 +329,7 @@ func (h *CommunityHandler) GetFeed(c *gin.Context) {
 type createPostRequest struct {
 	Body        string              `json:"body" binding:"required"`
 	IsAnonymous bool                `json:"is_anonymous"`
+	ImageURLs   []string            `json:"image_urls"`
 	Event       *createEventRequest `json:"event"`
 }
 
@@ -397,6 +399,12 @@ func (h *CommunityHandler) CreatePost(c *gin.Context) {
 		}
 	}
 
+	imageURLs, err := validateHTTPSImageURLs(req.ImageURLs, 4)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	post := &db.CommunityPost{
 		UserID:           userID,
 		Body:             body,
@@ -411,6 +419,7 @@ func (h *CommunityHandler) CreatePost(c *gin.Context) {
 		Country:          user.Country,
 		StateProvince:    user.StateProvince,
 		City:             user.City,
+		ImageURLs:        imageURLs,
 	}
 
 	saved, err := h.db.CreateCommunityPost(ctx, post)
@@ -893,6 +902,7 @@ func postToJSON(p db.CommunityPost) gin.H {
 		"country":           p.Country,
 		"state_province":    p.StateProvince,
 		"city":              p.City,
+		"image_urls":        p.ImageURLs,
 		"created_at":        p.CreatedAt.UTC().Format(time.RFC3339),
 		"author": gin.H{
 			"id":           nullableAuthorID(p),
@@ -997,6 +1007,35 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
+}
+
+const maxCommunityPostImages = 4
+
+func validateHTTPSImageURLs(raw []string, max int) ([]string, error) {
+	if len(raw) > max {
+		return nil, fmt.Errorf("At most %d image URLs allowed", max)
+	}
+	seen := make(map[string]bool, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		parsed, err := url.Parse(item)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+			return nil, fmt.Errorf("Each image URL must be a valid https link")
+		}
+		if seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	if len(out) > max {
+		return nil, fmt.Errorf("At most %d image URLs allowed", max)
+	}
+	return out, nil
 }
 
 func parseLimit(c *gin.Context, defaultLimit int) int {

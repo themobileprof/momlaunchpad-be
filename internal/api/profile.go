@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"github.com/themobileprof/momlaunchpad-be/internal/profile"
+	"github.com/themobileprof/momlaunchpad-be/internal/storage"
 )
 
 const profileFactConfidence = 1.0
@@ -26,12 +29,13 @@ var profileFactKeys = map[string]bool{
 
 // ProfileHandler handles user profile and onboarding endpoints.
 type ProfileHandler struct {
-	db *db.DB
+	db     *db.DB
+	photos *storage.ProfilePhotoStore
 }
 
 // NewProfileHandler creates a new profile handler.
-func NewProfileHandler(database *db.DB) *ProfileHandler {
-	return &ProfileHandler{db: database}
+func NewProfileHandler(database *db.DB, photos *storage.ProfilePhotoStore) *ProfileHandler {
+	return &ProfileHandler{db: database, photos: photos}
 }
 
 // ProfileResponse is the user's profile and known facts for personalization.
@@ -96,6 +100,134 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(c.Request.Context(), user, facts))
 }
 
+// UploadProfilePhoto godoc
+// @Summary      Upload profile photo
+// @Description  Accepts multipart form field `photo` (JPEG/PNG/WebP, max 5MB). Replaces any previous uploaded photo.
+// @Tags         profile
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        photo formData file true "Profile photo"
+// @Success      200 {object} ProfileResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     BearerAuth
+// @Router       /users/me/profile-photo [post]
+func (h *ProfileHandler) UploadProfilePhoto(c *gin.Context) {
+	if h.photos == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Photo upload is not configured"})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	file, err := c.FormFile("photo")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Photo file is required"})
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read photo"})
+		return
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(io.LimitReader(src, storage.MaxProfilePhotoBytes+1))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read photo"})
+		return
+	}
+	if len(data) > storage.MaxProfilePhotoBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Photo must be 5MB or smaller"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	user, err := h.db.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	path, err := h.photos.Save(userID, data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if user.ProfilePhotoURL != nil && storage.IsManagedProfilePhotoPath(*user.ProfilePhotoURL) {
+		_ = h.photos.DeleteByPublicPath(*user.ProfilePhotoURL)
+	}
+
+	publicURL := publicBaseURL(c) + path
+	if err := h.db.UpdateUserProfileDetails(ctx, userID, db.UserProfileUpdate{
+		ProfilePhotoURL: &publicURL,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save profile photo"})
+		return
+	}
+
+	user, err = h.db.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load profile"})
+		return
+	}
+	facts, err := h.db.GetUserFacts(ctx, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch profile facts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(ctx, user, facts))
+}
+
+// DeleteProfilePhoto godoc
+// @Summary      Remove profile photo
+// @Description  Deletes the user's uploaded profile photo if stored on this server.
+// @Tags         profile
+// @Produce      json
+// @Success      200 {object} ProfileResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     BearerAuth
+// @Router       /users/me/profile-photo [delete]
+func (h *ProfileHandler) DeleteProfilePhoto(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	ctx := c.Request.Context()
+
+	user, err := h.db.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if user.ProfilePhotoURL != nil && h.photos != nil &&
+		storage.IsManagedProfilePhotoPath(*user.ProfilePhotoURL) {
+		_ = h.photos.DeleteByPublicPath(*user.ProfilePhotoURL)
+	}
+
+	empty := ""
+	if err := h.db.UpdateUserProfileDetails(ctx, userID, db.UserProfileUpdate{
+		ProfilePhotoURL: &empty,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove profile photo"})
+		return
+	}
+
+	user, err = h.db.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load profile"})
+		return
+	}
+	facts, err := h.db.GetUserFacts(ctx, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch profile facts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(ctx, user, facts))
+}
+
 // UpdateProfile saves profile changes from the profile page.
 func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
@@ -111,7 +243,9 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 		if strings.Contains(err.Error(), "invalid journey transition") ||
 			strings.Contains(err.Error(), "journey_stage") ||
 			strings.Contains(err.Error(), "baby_birth_date") ||
-			strings.Contains(err.Error(), "pregnancy_week") {
+			strings.Contains(err.Error(), "pregnancy_week") ||
+			strings.Contains(err.Error(), "profile photo") ||
+			strings.Contains(err.Error(), "image URL") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -197,6 +331,20 @@ func (h *ProfileHandler) saveProfile(
 		Country:          trimOptionalString(req.Country),
 		StateProvince:    trimOptionalString(req.StateProvince),
 		City:             trimOptionalString(req.City),
+	}
+
+	if update.ProfilePhotoURL != nil && *update.ProfilePhotoURL != "" &&
+		!storage.IsManagedProfilePhotoPath(*update.ProfilePhotoURL) {
+		urls, err := validateHTTPSImageURLs([]string{*update.ProfilePhotoURL}, 1)
+		if err != nil {
+			return nil, nil, fmt.Errorf("profile photo: %s", err.Error())
+		}
+		if len(urls) == 0 {
+			empty := ""
+			update.ProfilePhotoURL = &empty
+		} else {
+			update.ProfilePhotoURL = &urls[0]
+		}
 	}
 
 	stage := strings.TrimSpace(req.JourneyStage)
@@ -454,4 +602,18 @@ func clampWeek(week int) int {
 		return 42
 	}
 	return week
+}
+
+func publicBaseURL(c *gin.Context) string {
+	if v := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if forwarded := c.GetHeader("X-Forwarded-Proto"); forwarded != "" {
+		scheme = strings.Split(forwarded, ",")[0]
+	}
+	return scheme + "://" + c.Request.Host
 }

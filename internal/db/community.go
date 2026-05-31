@@ -35,6 +35,7 @@ type CommunityPost struct {
 	AuthorPhotoURL      *string
 	AuthorBadges        []string
 	LikedByMe           bool
+	ImageURLs           []string
 }
 
 // CommunityReply is a flat reply on a post.
@@ -207,17 +208,23 @@ func (db *DB) RevokeUserBadge(ctx context.Context, userID, badgeType string) err
 
 // CreateCommunityPost inserts a new post.
 func (db *DB) CreateCommunityPost(ctx context.Context, post *CommunityPost) (*CommunityPost, error) {
+	imageURLs := post.ImageURLs
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
+
 	query := `
 		INSERT INTO community_posts (
 			user_id, body, is_anonymous, category, scope, medical_relevance,
-			is_event, safety_flag, spam_score, status, country, state_province, city
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			is_event, safety_flag, spam_score, status, country, state_province, city,
+			image_urls
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING id, like_count, reply_count, created_at, updated_at
 	`
 	err := db.QueryRowContext(ctx, query,
 		post.UserID, post.Body, post.IsAnonymous, post.Category, post.Scope,
 		post.MedicalRelevance, post.IsEvent, post.SafetyFlag, post.SpamScore,
-		post.Status, post.Country, post.StateProvince, post.City,
+		post.Status, post.Country, post.StateProvince, post.City, pq.Array(imageURLs),
 	).Scan(&post.ID, &post.LikeCount, &post.ReplyCount, &post.CreatedAt, &post.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create post: %w", err)
@@ -231,7 +238,7 @@ func (db *DB) GetCommunityPostByID(ctx context.Context, postID, viewerID string)
 		SELECT p.id, p.user_id, p.body, p.is_anonymous, p.category, p.scope,
 		       p.medical_relevance, p.is_event, p.safety_flag, p.spam_score, p.status,
 		       p.country, p.state_province, p.city, p.like_count, p.reply_count,
-		       p.created_at, p.updated_at,
+		       p.created_at, p.updated_at, p.image_urls,
 		       u.display_name, u.profile_photo_url,
 		       EXISTS(SELECT 1 FROM community_post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $2)
 		FROM community_posts p
@@ -240,11 +247,12 @@ func (db *DB) GetCommunityPostByID(ctx context.Context, postID, viewerID string)
 	`
 	post := &CommunityPost{}
 	var authorName, authorPhoto sql.NullString
+	var imageURLs pq.StringArray
 	err := db.QueryRowContext(ctx, query, postID, viewerID).Scan(
 		&post.ID, &post.UserID, &post.Body, &post.IsAnonymous, &post.Category, &post.Scope,
 		&post.MedicalRelevance, &post.IsEvent, &post.SafetyFlag, &post.SpamScore, &post.Status,
 		&post.Country, &post.StateProvince, &post.City, &post.LikeCount, &post.ReplyCount,
-		&post.CreatedAt, &post.UpdatedAt,
+		&post.CreatedAt, &post.UpdatedAt, &imageURLs,
 		&authorName, &authorPhoto, &post.LikedByMe,
 	)
 	if err == sql.ErrNoRows {
@@ -259,6 +267,7 @@ func (db *DB) GetCommunityPostByID(ctx context.Context, postID, viewerID string)
 	if authorPhoto.Valid {
 		post.AuthorPhotoURL = &authorPhoto.String
 	}
+	post.ImageURLs = []string(imageURLs)
 	if !post.IsAnonymous {
 		badges, _ := db.GetUserBadges(ctx, post.UserID)
 		post.AuthorBadges = badges
@@ -284,7 +293,7 @@ func (db *DB) ListCommunityFeed(ctx context.Context, viewerID, filter string, li
 		SELECT p.id, p.user_id, p.body, p.is_anonymous, p.category, p.scope,
 		       p.medical_relevance, p.is_event, p.safety_flag, p.spam_score, p.status,
 		       p.country, p.state_province, p.city, p.like_count, p.reply_count,
-		       p.created_at, p.updated_at,
+		       p.created_at, p.updated_at, p.image_urls,
 		       u.display_name, u.profile_photo_url,
 		       EXISTS(SELECT 1 FROM community_post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $1)
 		FROM community_posts p
@@ -358,11 +367,12 @@ func (db *DB) ListCommunityFeed(ctx context.Context, viewerID, filter string, li
 	for rows.Next() {
 		var post CommunityPost
 		var authorName, authorPhoto sql.NullString
+		var imageURLs pq.StringArray
 		if err := rows.Scan(
 			&post.ID, &post.UserID, &post.Body, &post.IsAnonymous, &post.Category, &post.Scope,
 			&post.MedicalRelevance, &post.IsEvent, &post.SafetyFlag, &post.SpamScore, &post.Status,
 			&post.Country, &post.StateProvince, &post.City, &post.LikeCount, &post.ReplyCount,
-			&post.CreatedAt, &post.UpdatedAt,
+			&post.CreatedAt, &post.UpdatedAt, &imageURLs,
 			&authorName, &authorPhoto, &post.LikedByMe,
 		); err != nil {
 			return nil, err
@@ -373,6 +383,7 @@ func (db *DB) ListCommunityFeed(ctx context.Context, viewerID, filter string, li
 		if authorPhoto.Valid {
 			post.AuthorPhotoURL = &authorPhoto.String
 		}
+		post.ImageURLs = []string(imageURLs)
 		if !post.IsAnonymous {
 			badges, _ := db.GetUserBadges(ctx, post.UserID)
 			post.AuthorBadges = badges

@@ -62,6 +62,25 @@ func TestJWTAuth_MissingHeader(t *testing.T) {
 	}
 }
 
+func TestAdminOnly_AllowsAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("is_admin", true)
+		c.Next()
+	})
+	r.Use(AdminOnly())
+	r.GET("/admin", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
 func TestAdminOnly_RequiresAdmin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

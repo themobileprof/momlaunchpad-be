@@ -91,6 +91,7 @@ type CommunityPostJSON struct {
 	Country          *string             `json:"country" example:"United States"`
 	StateProvince    *string             `json:"state_province" example:"California"`
 	City             *string             `json:"city" example:"Los Angeles"`
+	ImageURLs        []string            `json:"image_urls" example:"https://example.com/photo.jpg"`
 	CreatedAt        string              `json:"created_at" example:"2026-05-30T12:00:00Z"`
 	Author           CommunityAuthorJSON `json:"author"`
 }
@@ -115,6 +116,7 @@ type CreateCommunityEventRequest struct {
 type CreateCommunityPostRequest struct {
 	Body        string                       `json:"body" binding:"required" example:"Anyone free Saturday morning?"`
 	IsAnonymous bool                         `json:"is_anonymous" example:"false"`
+	ImageURLs   []string                     `json:"image_urls" example:"https://example.com/photo.jpg"`
 	Event       *CreateCommunityEventRequest `json:"event"`
 }
 

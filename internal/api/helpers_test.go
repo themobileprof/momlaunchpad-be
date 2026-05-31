@@ -19,6 +19,8 @@ var userRowColumns = []string{
 	"pregnancy_week", "pregnancy_start_date", "expected_delivery_date",
 	"is_first_pregnancy", "primary_concern", "diet_preference",
 	"journey_stage", "journey_stage_since", "baby_birth_date", "loss_date",
+	"profile_photo_url", "country", "country_code", "state_province", "city",
+	"community_onboarding_completed_at",
 	"savings_goal", "is_admin", "onboarding_completed_at", "created_at", "updated_at",
 }
 
@@ -35,8 +37,26 @@ func newMockDB(t *testing.T) (*db.DB, sqlmock.Sqlmock) {
 func mockUserRows(userID, email string) *sqlmock.Rows {
 	now := time.Now()
 	name := "Test User"
-	return sqlmock.NewRows(userRowColumns).
-		AddRow(userID, email, "", name, "en", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, now, now)
+	return sqlmock.NewRows(userRowColumns).AddRow(
+		userID, email, "", name, "en", "", nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
+		nil, false, nil, now, now,
+	)
+}
+
+func mockUserRowsWithPassword(userID, email, passwordHash string, isAdmin bool) *sqlmock.Rows {
+	now := time.Now()
+	name := "Test User"
+	if isAdmin {
+		name = "Admin"
+	}
+	return sqlmock.NewRows(userRowColumns).AddRow(
+		userID, email, passwordHash, name, "en", "", nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
+		nil, isAdmin, nil, now, now,
+	)
 }
 
 func ginWithUserID(userID string) *gin.Engine {

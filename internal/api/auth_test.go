@@ -89,8 +89,7 @@ func TestAuthLogin_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows := sqlmock.NewRows(userRowColumns).
-		AddRow(userID, "user@example.com", string(hash), "Test User", "en", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, time.Now(), time.Now())
+	rows := mockUserRowsWithPassword(userID, "user@example.com", string(hash), false)
 
 	mock.ExpectQuery(`FROM users`).
 		WithArgs("user@example.com").
@@ -159,6 +158,47 @@ func TestAuthMe_Success(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuthLogin_AdminUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, mock := newMockDB(t)
+	userID := "11111111-1111-1111-1111-111111111111"
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows := mockUserRowsWithPassword(userID, "admin@example.com", string(hash), true)
+
+	mock.ExpectQuery(`FROM users`).
+		WithArgs("admin@example.com").
+		WillReturnRows(rows)
+
+	r := gin.New()
+	h := NewAuthHandler(database, "test-jwt-secret")
+	r.POST("/login", h.Login)
+
+	req, _ := jsonRequest(http.MethodPost, "/login", map[string]string{
+		"email":    "admin@example.com",
+		"password": "password123",
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
+	}
+
+	var resp AuthResponse
+	decodeJSONBody(t, w, &resp)
+	if !resp.User.IsAdmin {
+		t.Fatalf("expected is_admin=true, got %+v", resp.User)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

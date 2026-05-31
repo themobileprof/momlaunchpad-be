@@ -52,6 +52,6 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Backup files
-*.bak
-*.backup
+# Uploaded user content (local dev / self-hosted)
+uploads/
+

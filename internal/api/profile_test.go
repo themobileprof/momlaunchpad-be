@@ -104,7 +104,7 @@ func TestProfileCompleteOnboarding_RequiresJourneyStage(t *testing.T) {
 	database, mock := newMockDB(t)
 
 	r := ginWithUserID("user-1")
-	r.PUT("/onboarding", NewProfileHandler(database).CompleteOnboarding)
+	r.PUT("/onboarding", NewProfileHandler(database, nil).CompleteOnboarding)
 
 	req, err := jsonRequest(http.MethodPut, "/onboarding", map[string]string{"name": "Sarah"})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestProfileGetProfile_NotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	r := ginWithUserID(userID)
-	r.GET("/profile", NewProfileHandler(database).GetProfile)
+	r.GET("/profile", NewProfileHandler(database, nil).GetProfile)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/profile", nil))
@@ -157,7 +157,7 @@ func TestProfileGetProfile_Success(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "key", "value", "confidence", "created_at", "updated_at"}))
 
 	r := ginWithUserID(userID)
-	r.GET("/profile", NewProfileHandler(database).GetProfile)
+	r.GET("/profile", NewProfileHandler(database, nil).GetProfile)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/profile", nil))

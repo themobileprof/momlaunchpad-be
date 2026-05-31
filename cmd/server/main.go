@@ -23,6 +23,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/prompt"
 	"github.com/themobileprof/momlaunchpad-be/internal/subscription"
 	"github.com/themobileprof/momlaunchpad-be/internal/symptoms"
+	"github.com/themobileprof/momlaunchpad-be/internal/storage"
 	"github.com/themobileprof/momlaunchpad-be/internal/welcome"
 	"github.com/themobileprof/momlaunchpad-be/internal/ws"
 	"github.com/themobileprof/momlaunchpad-be/pkg/deepseek"
@@ -167,7 +168,12 @@ func main() {
 	savingsHandler := api.NewSavingsHandler(database)
 	subscriptionHandler := api.NewSubscriptionHandler(subMgr)
 	conversationHandler := api.NewConversationHandler(database)
-	profileHandler := api.NewProfileHandler(database)
+	uploadDir := getEnv("UPLOAD_DIR", "./uploads")
+	photoStore, err := storage.NewProfilePhotoStore(uploadDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize uploads: %v", err)
+	}
+	profileHandler := api.NewProfileHandler(database, photoStore)
 	doctorVisitHandler := api.NewDoctorVisitHandler(database)
 	vitalsHandler := api.NewVitalsHandler(database)
 
@@ -222,6 +228,8 @@ func main() {
 			"time":   time.Now().Unix(),
 		})
 	})
+
+	router.Static("/uploads", uploadDir)
 
 	// Auth routes (public)
 	auth := router.Group("/api/auth")
@@ -386,6 +394,8 @@ func main() {
 	{
 		profileGroup.GET("/profile", profileHandler.GetProfile)
 		profileGroup.PUT("/profile", profileHandler.UpdateProfile)
+		profileGroup.POST("/profile-photo", profileHandler.UploadProfilePhoto)
+		profileGroup.DELETE("/profile-photo", profileHandler.DeleteProfilePhoto)
 		profileGroup.PUT("/onboarding", profileHandler.CompleteOnboarding)
 		profileGroup.GET("/welcome", welcomeHandler.GetWelcome)
 	}
