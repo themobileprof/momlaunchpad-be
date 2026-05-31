@@ -12,15 +12,16 @@ import (
 )
 
 const maxWelcomeWords = 100
+const welcomeCacheTTL = 7 * 24 * time.Hour
 
-// Result is a daily welcome message returned to clients.
+// Result is a cached welcome message returned to clients.
 type Result struct {
 	Message   string
 	CacheDate time.Time
 	Source    string
 }
 
-// Service generates and caches personalized daily welcome messages.
+// Service generates and caches personalized welcome messages (7-day rolling window).
 type Service struct {
 	db       *db.DB
 	gemini   llm.Client
@@ -33,21 +34,23 @@ func NewService(database *db.DB, gemini, deepseek llm.Client) *Service {
 	return &Service{db: database, gemini: gemini, deepseek: deepseek}
 }
 
-// GetDailyWelcome returns today's cached message or generates a new one.
-func (s *Service) GetDailyWelcome(ctx context.Context, userID string) (*Result, error) {
-	cacheDate := startOfDayUTC(time.Now())
+// GetWeeklyWelcome returns a cached welcome message or generates one if older than 7 days.
+func (s *Service) GetWeeklyWelcome(ctx context.Context, userID string) (*Result, error) {
+	now := time.Now()
 
-	cached, err := s.db.GetWelcomeMessage(ctx, userID, cacheDate)
+	cached, err := s.db.GetLatestWelcomeMessage(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if cached != nil {
+	if cached != nil && now.Sub(cached.CacheDate) < welcomeCacheTTL {
 		return &Result{
 			Message:   cached.Message,
 			CacheDate: cached.CacheDate,
 			Source:    "cache",
 		}, nil
 	}
+
+	cacheDate := startOfDayUTC(now)
 
 	user, err := s.db.GetUserByID(ctx, userID)
 	if err != nil || user == nil {
@@ -356,4 +359,12 @@ func truncate(text string, max int) string {
 func startOfDayUTC(t time.Time) time.Time {
 	y, m, d := t.UTC().Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// StartOfWeekUTC returns Monday 00:00 UTC for the week containing t.
+func StartOfWeekUTC(t time.Time) time.Time {
+	utc := t.UTC()
+	daysSinceMonday := (int(utc.Weekday()) + 6) % 7
+	monday := utc.AddDate(0, 0, -daysSinceMonday)
+	return startOfDayUTC(monday)
 }

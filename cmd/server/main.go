@@ -172,11 +172,11 @@ func main() {
 
 	switch {
 	case welcomeGemini != nil && welcomeDeepseek != nil:
-		log.Println("✅ Daily welcome messages: Gemini primary, DeepSeek fallback")
+		log.Println("✅ Weekly welcome messages: Gemini primary, DeepSeek fallback")
 	case welcomeGemini != nil:
-		log.Println("✅ Daily welcome messages will use Gemini")
+		log.Println("✅ Weekly welcome messages will use Gemini")
 	case welcomeDeepseek != nil:
-		log.Println("✅ Daily welcome messages will use DeepSeek")
+		log.Println("✅ Weekly welcome messages will use DeepSeek")
 	default:
 		log.Println("⚠️  No LLM keys for welcome — using static fallback templates")
 	}

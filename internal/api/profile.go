@@ -252,10 +252,8 @@ func (h *ProfileHandler) saveProfile(
 		return nil, nil, err
 	}
 
-	// Profile changes affect welcome personalization — invalidate today's cache.
-	y, m, d := now.UTC().Date()
-	cacheDate := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	if err := h.db.DeleteWelcomeMessage(ctx, userID, cacheDate); err != nil {
+	// Profile changes affect welcome personalization — invalidate cached messages.
+	if err := h.db.DeleteWelcomeMessagesForUser(ctx, userID); err != nil {
 		return nil, nil, fmt.Errorf("failed to invalidate welcome message: %w", err)
 	}
 

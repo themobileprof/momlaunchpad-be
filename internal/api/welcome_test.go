@@ -19,7 +19,7 @@ func TestGetWelcome_ReturnsCachedMessage(t *testing.T) {
 	now := time.Now()
 
 	mock.ExpectQuery(`FROM user_welcome_messages`).
-		WithArgs(userID, cacheDate.Format("2006-01-02")).
+		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "cache_date", "message", "source", "created_at"}).
 			AddRow("wm-1", userID, cacheDate, "Good morning!", "gemini", now))
 

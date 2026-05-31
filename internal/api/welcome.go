@@ -9,7 +9,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/welcome"
 )
 
-// WelcomeHandler serves personalized daily welcome messages.
+// WelcomeHandler serves personalized weekly welcome messages.
 type WelcomeHandler struct {
 	service *welcome.Service
 }
@@ -19,12 +19,12 @@ func NewWelcomeHandler(service *welcome.Service) *WelcomeHandler {
 	return &WelcomeHandler{service: service}
 }
 
-// GetWelcome returns today's welcome message (cached per user per day).
+// GetWelcome returns this week's welcome message (cached per user per week).
 // GET /api/users/me/welcome
 func (h *WelcomeHandler) GetWelcome(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	result, err := h.service.GetDailyWelcome(c.Request.Context(), userID)
+	result, err := h.service.GetWeeklyWelcome(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load welcome message"})
 		return
