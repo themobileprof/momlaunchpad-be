@@ -104,6 +104,11 @@ type User struct {
 	JourneyStageSince     *time.Time `json:"journey_stage_since"`
 	BabyBirthDate         *time.Time `json:"baby_birth_date"`
 	LossDate              *time.Time `json:"loss_date"`
+	ProfilePhotoURL       *string    `json:"profile_photo_url"`
+	Country               *string    `json:"country"`
+	StateProvince         *string    `json:"state_province"`
+	City                  *string    `json:"city"`
+	CommunityOnboardingAt *time.Time `json:"community_onboarding_completed_at,omitempty"`
 	SavingsGoal           *float64   `json:"savings_goal"`
 	IsAdmin               bool       `json:"is_admin"`
 	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty"`

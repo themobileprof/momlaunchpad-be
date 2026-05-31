@@ -49,6 +49,12 @@ type ProfileResponse struct {
 	IsFirstPregnancy     *bool             `json:"is_first_pregnancy,omitempty"`
 	PrimaryConcern       *string           `json:"primary_concern,omitempty"`
 	DietPreference       *string           `json:"diet_preference,omitempty"`
+	ProfilePhotoURL      *string           `json:"profile_photo_url,omitempty"`
+	Country              *string           `json:"country,omitempty"`
+	StateProvince        *string           `json:"state_province,omitempty"`
+	City                 *string           `json:"city,omitempty"`
+	CommunityOnboardingCompleted bool        `json:"community_onboarding_completed"`
+	CommunityInterests   []string          `json:"community_interests,omitempty"`
 	LearnedFacts         map[string]string `json:"learned_facts,omitempty"`
 	Facts                map[string]string `json:"facts,omitempty"`
 }
@@ -65,6 +71,10 @@ type ProfileSaveRequest struct {
 	IsFirstPregnancy     *bool      `json:"is_first_pregnancy"`
 	PrimaryConcern       *string    `json:"primary_concern"`
 	DietPreference       *string    `json:"diet_preference"`
+	ProfilePhotoURL      *string    `json:"profile_photo_url"`
+	Country              *string    `json:"country"`
+	StateProvince        *string    `json:"state_province"`
+	City                 *string    `json:"city"`
 }
 
 // GetProfile returns the current user's profile and personalization facts.
@@ -83,7 +93,7 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildProfileResponse(user, facts))
+	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(c.Request.Context(), user, facts))
 }
 
 // UpdateProfile saves profile changes from the profile page.
@@ -109,7 +119,7 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildProfileResponse(user, facts))
+	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(c.Request.Context(), user, facts))
 }
 
 // CompleteOnboarding saves onboarding answers and marks setup complete.
@@ -144,7 +154,7 @@ func (h *ProfileHandler) CompleteOnboarding(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildProfileResponse(user, facts))
+	c.JSON(http.StatusOK, h.buildProfileResponseWithCommunity(c.Request.Context(), user, facts))
 }
 
 func (h *ProfileHandler) saveProfile(
@@ -183,6 +193,10 @@ func (h *ProfileHandler) saveProfile(
 		DietPreference:   trimOptionalString(req.DietPreference),
 		BabyBirthDate:    req.BabyBirthDate,
 		LossDate:         req.LossDate,
+		ProfilePhotoURL:  trimOptionalString(req.ProfilePhotoURL),
+		Country:          trimOptionalString(req.Country),
+		StateProvince:    trimOptionalString(req.StateProvince),
+		City:             trimOptionalString(req.City),
 	}
 
 	stage := strings.TrimSpace(req.JourneyStage)
@@ -353,9 +367,21 @@ func buildProfileResponse(user *db.User, facts []db.UserFact) ProfileResponse {
 		IsFirstPregnancy:     user.IsFirstPregnancy,
 		PrimaryConcern:       user.PrimaryConcern,
 		DietPreference:       user.DietPreference,
+		ProfilePhotoURL:      user.ProfilePhotoURL,
+		Country:              user.Country,
+		StateProvince:        user.StateProvince,
+		City:                 user.City,
+		CommunityOnboardingCompleted: user.CommunityOnboardingAt != nil,
 		LearnedFacts:         learnedFacts,
 		Facts:                allFacts,
 	}
+}
+
+func (h *ProfileHandler) buildProfileResponseWithCommunity(ctx context.Context, user *db.User, facts []db.UserFact) ProfileResponse {
+	resp := buildProfileResponse(user, facts)
+	interests, _ := h.db.GetUserCommunityInterests(ctx, user.ID)
+	resp.CommunityInterests = interests
+	return resp
 }
 
 func journeyStageValue(user *db.User) string {

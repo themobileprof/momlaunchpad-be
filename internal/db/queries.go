@@ -20,6 +20,8 @@ const userSelectSQL = `
 	       pregnancy_week, pregnancy_start_date, expected_delivery_date,
 	       is_first_pregnancy, primary_concern, diet_preference,
 	       journey_stage, journey_stage_since, baby_birth_date, loss_date,
+	       profile_photo_url, country, state_province, city,
+	       community_onboarding_completed_at,
 	       savings_goal, is_admin, onboarding_completed_at, created_at, updated_at
 	FROM users`
 
@@ -33,6 +35,8 @@ func scanUser(scanner interface {
 		&user.ExpectedDeliveryDate, &user.IsFirstPregnancy, &user.PrimaryConcern,
 		&user.DietPreference, &user.JourneyStage, &user.JourneyStageSince,
 		&user.BabyBirthDate, &user.LossDate,
+		&user.ProfilePhotoURL, &user.Country, &user.StateProvince, &user.City,
+		&user.CommunityOnboardingAt,
 		&user.SavingsGoal, &user.IsAdmin, &user.OnboardingCompletedAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -56,6 +60,10 @@ type UserProfileUpdate struct {
 	JourneyStageSince    *time.Time
 	BabyBirthDate        *time.Time
 	LossDate             *time.Time
+	ProfilePhotoURL      *string
+	Country              *string
+	StateProvince        *string
+	City                 *string
 }
 
 // CreateUser creates a new user
@@ -709,8 +717,12 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		    journey_stage_since = COALESCE($10, journey_stage_since),
 		    baby_birth_date = COALESCE($11, baby_birth_date),
 		    loss_date = COALESCE($12, loss_date),
+		    profile_photo_url = COALESCE($13, profile_photo_url),
+		    country = COALESCE($14, country),
+		    state_province = COALESCE($15, state_province),
+		    city = COALESCE($16, city),
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $13
+		WHERE id = $17
 	`
 
 	result, err := db.ExecContext(ctx, query,
@@ -726,6 +738,10 @@ func (db *DB) UpdateUserProfileDetails(ctx context.Context, userID string, updat
 		update.JourneyStageSince,
 		update.BabyBirthDate,
 		update.LossDate,
+		update.ProfilePhotoURL,
+		update.Country,
+		update.StateProvince,
+		update.City,
 		userID,
 	)
 	if err != nil {

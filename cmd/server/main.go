@@ -16,6 +16,7 @@ import (
 	"github.com/themobileprof/momlaunchpad-be/internal/calendar"
 	"github.com/themobileprof/momlaunchpad-be/internal/chat"
 	"github.com/themobileprof/momlaunchpad-be/internal/classifier"
+	"github.com/themobileprof/momlaunchpad-be/internal/community"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"github.com/themobileprof/momlaunchpad-be/internal/language"
 	"github.com/themobileprof/momlaunchpad-be/internal/memory"
@@ -183,6 +184,9 @@ func main() {
 
 	welcomeSvc := welcome.NewService(database, welcomeGemini, welcomeDeepseek)
 	welcomeHandler := api.NewWelcomeHandler(welcomeSvc)
+	communityProcessor := community.NewProcessor(welcomeGemini, welcomeDeepseek)
+	communityHandler := api.NewCommunityHandler(database, communityProcessor)
+	adminCommunityHandler := api.NewAdminCommunityHandler(database)
 	symptomHandler := api.NewSymptomHandler(database, symptomSummarizer)
 
 	chatHandler := ws.NewChatHandler(
@@ -320,6 +324,7 @@ func main() {
 	conversationGroup := router.Group("/api")
 	conversationGroup.Use(middleware.JWTAuth(jwtSecret))
 	conversationHandler.RegisterRoutes(conversationGroup)
+	communityHandler.RegisterRoutes(conversationGroup)
 
 	// Initialize admin handler
 	adminHandler := api.NewAdminHandler(database, langMgr)
@@ -371,6 +376,8 @@ func main() {
 		adminGroup.GET("/settings", adminHandler.GetSystemSettings)
 		adminGroup.GET("/settings/:key", adminHandler.GetSystemSetting)
 		adminGroup.PUT("/settings/:key", adminHandler.UpdateSystemSetting)
+
+		adminCommunityHandler.RegisterRoutes(adminGroup)
 	}
 
 	// User profile & onboarding (authenticated)
