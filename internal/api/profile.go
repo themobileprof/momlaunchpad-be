@@ -55,6 +55,7 @@ type ProfileResponse struct {
 	DietPreference       *string           `json:"diet_preference,omitempty"`
 	ProfilePhotoURL      *string           `json:"profile_photo_url,omitempty"`
 	Country              *string           `json:"country,omitempty"`
+	CountryCode          *string           `json:"country_code,omitempty"`
 	StateProvince        *string           `json:"state_province,omitempty"`
 	City                 *string           `json:"city,omitempty"`
 	CommunityOnboardingCompleted bool        `json:"community_onboarding_completed"`
@@ -77,6 +78,7 @@ type ProfileSaveRequest struct {
 	DietPreference       *string    `json:"diet_preference"`
 	ProfilePhotoURL      *string    `json:"profile_photo_url"`
 	Country              *string    `json:"country"`
+	CountryCode          *string    `json:"country_code"`
 	StateProvince        *string    `json:"state_province"`
 	City                 *string    `json:"city"`
 }
@@ -328,9 +330,20 @@ func (h *ProfileHandler) saveProfile(
 		BabyBirthDate:    req.BabyBirthDate,
 		LossDate:         req.LossDate,
 		ProfilePhotoURL:  trimOptionalString(req.ProfilePhotoURL),
-		Country:          trimOptionalString(req.Country),
 		StateProvince:    trimOptionalString(req.StateProvince),
 		City:             trimOptionalString(req.City),
+	}
+
+	if req.CountryCode != nil && strings.TrimSpace(*req.CountryCode) != "" {
+		code := strings.ToUpper(strings.TrimSpace(*req.CountryCode))
+		countryName, err := h.db.ResolveCountryName(ctx, code)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid country_code")
+		}
+		update.CountryCode = &code
+		update.Country = &countryName
+	} else {
+		update.Country = trimOptionalString(req.Country)
 	}
 
 	if update.ProfilePhotoURL != nil && *update.ProfilePhotoURL != "" &&
@@ -517,6 +530,7 @@ func buildProfileResponse(user *db.User, facts []db.UserFact) ProfileResponse {
 		DietPreference:       user.DietPreference,
 		ProfilePhotoURL:      user.ProfilePhotoURL,
 		Country:              user.Country,
+		CountryCode:          user.CountryCode,
 		StateProvince:        user.StateProvince,
 		City:                 user.City,
 		CommunityOnboardingCompleted: user.CommunityOnboardingAt != nil,
