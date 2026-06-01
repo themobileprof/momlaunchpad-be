@@ -9,7 +9,8 @@ This project uses GitHub Actions for continuous integration and deployment.
 **Triggers:**
 - Push to `main` or `develop`
 - Pull requests to `main` or `develop`
-- Version tags (`v*`)
+
+(Version tags do **not** re-run CI — only the deploy workflow runs on `v*` tags.)
 
 **Jobs (parallel, then build):**
 - **Test** — PostgreSQL + Redis, `go test`, Codecov
@@ -29,8 +30,10 @@ This project uses GitHub Actions for continuous integration and deployment.
 ### 2. Deploy to Production (`.github/workflows/deploy.yml`)
 
 **Triggers:**
-- Version tags (`v*`)
+- Version tags (`v*`) only (not full CI)
 - Manual workflow dispatch (with environment selection)
+
+**Image tag on release:** Tries `0.1.4` (no `v`), then `sha-<commit>` from the last `main` CI build, then `latest`. Tag releases after CI has passed on `main` for that commit.
 
 **Deployment Steps:**
 1. SSH into production/staging server
