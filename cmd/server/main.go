@@ -236,6 +236,7 @@ func main() {
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/refresh", authHandler.Refresh)
 		auth.GET("/me", middleware.JWTAuth(jwtSecret), authHandler.Me)
 
 		// OAuth routes - Web flow (browser redirects)

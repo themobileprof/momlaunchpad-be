@@ -12,8 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
+	"github.com/themobileprof/momlaunchpad-be/internal/auth"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -282,19 +281,7 @@ func (h *OAuthHandler) generateJWT(user *db.User) (string, error) {
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET not configured")
 	}
-
-	claims := &middleware.JWTClaims{
-		UserID:  user.ID,
-		Email:   user.Email,
-		IsAdmin: user.IsAdmin,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour * 7)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	return auth.GenerateUserToken(user, secret)
 }
 
 // generateRandomState generates a random state string for CSRF protection

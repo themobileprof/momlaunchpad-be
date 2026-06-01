@@ -2,11 +2,10 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/themobileprof/momlaunchpad-be/internal/api/middleware"
+	"github.com/themobileprof/momlaunchpad-be/internal/auth"
 	"github.com/themobileprof/momlaunchpad-be/internal/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -155,20 +154,53 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, userToUserInfo(user))
 }
 
-// generateToken generates a JWT token for a user
-func (h *AuthHandler) generateToken(user *db.User) (string, error) {
-	claims := &middleware.JWTClaims{
-		UserID:  user.ID,
-		Email:   user.Email,
-		IsAdmin: user.IsAdmin,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour * 7)), // 7 days
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+// Refresh issues a new JWT while the current session is still within the refresh grace window.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	tokenString, ok := bearerToken(c.GetHeader("Authorization"))
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+		return
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(h.jwtSecret))
+	claims, err := auth.ParseTokenForRefresh(tokenString, h.jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired. Please sign in again."})
+		return
+	}
+
+	user, err := h.db.GetUserByID(c.Request.Context(), claims.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	token, err := auth.GenerateUserToken(user, h.jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, AuthResponse{
+		Token: token,
+		User:  userToUserInfo(user),
+	})
+}
+
+func bearerToken(authHeader string) (string, bool) {
+	if authHeader == "" {
+		return "", false
+	}
+	const prefix = "Bearer "
+	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
+		return "", false
+	}
+	token := authHeader[len(prefix):]
+	return token, token != ""
+}
+
+// generateToken generates a JWT token for a user
+func (h *AuthHandler) generateToken(user *db.User) (string, error) {
+	return auth.GenerateUserToken(user, h.jwtSecret)
 }
 
 // userToUserInfo converts a db.User to UserInfo
