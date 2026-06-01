@@ -1,9 +1,10 @@
 name: Deploy to Production
 
-# Host port for MomLaunchpad (container still uses 8080 internally).
-# 8083 avoids conflict with other services on the same VM (e.g. legacy API on 8080).
+# Host port 8083 avoids legacy services on 8080 and themobileprof-backend on 3000.
+# --network host matches themobileprof-backend so DATABASE_URL can use localhost.
 env:
   APP_HOST_PORT: '8083'
+  DEPLOY_DIR: /var/www/momlaunchpad-api
 
 on:
   push:
@@ -74,6 +75,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           HOST_PORT: ${{ env.APP_HOST_PORT }}
+          DEPLOY_DIR: ${{ env.DEPLOY_DIR }}
         run: |
           SSH_OPTS="-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -p $PORT"
 
@@ -86,10 +88,33 @@ jobs:
             "TAG=${TAG}" \
             "TAG_FALLBACK=${TAG_FALLBACK}" \
             "HOST_PORT=${HOST_PORT}" \
+            "DEPLOY_DIR=${DEPLOY_DIR}" \
             "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}" \
             "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN}" \
             bash -s << 'REMOTE'
           set -euo pipefail
+
+          echo "Starting MomLaunchpad deploy..."
+
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "Docker is not installed on the server"
+            exit 1
+          fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "Docker permission denied — user may not be in the docker group"
+            exit 1
+          fi
+
+          if [ ! -s /tmp/momlaunchpad.env ]; then
+            echo "ENV file is missing or empty"
+            exit 1
+          fi
+
+          mkdir -p "${DEPLOY_DIR}"
+          UPLOADS_DIR="${DEPLOY_DIR}/uploads"
+          mkdir -p "${UPLOADS_DIR}"
+          chown -R 1000:1000 "${UPLOADS_DIR}" 2>/dev/null || true
+          echo "Uploads directory: ${UPLOADS_DIR}"
 
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
@@ -106,23 +131,69 @@ jobs:
             exit 1
           fi
 
-          # Replace only our container (leave other stacks on the host untouched)
+          # Replace only our container (leave themobileprof-backend and others untouched)
           docker rm -f momlaunchpad-api 2>/dev/null || true
 
-          docker run -d \
+          # Host network: Postgres on the VM listens on 127.0.0.1 only (same as themobileprof-backend).
+          # Inject PORT and UPLOAD_DIR so they always match this deploy layout.
+          grep -v -E '^(PORT|UPLOAD_DIR)=' /tmp/momlaunchpad.env > /tmp/momlaunchpad.env.tmp
+          mv /tmp/momlaunchpad.env.tmp /tmp/momlaunchpad.env
+          {
+            echo "PORT=${HOST_PORT}"
+            echo "UPLOAD_DIR=/app/uploads"
+          } >> /tmp/momlaunchpad.env
+
+          echo "Starting container with host networking (port ${HOST_PORT})..."
+          CONTAINER_ID=$(docker run -d \
             --name momlaunchpad-api \
             --restart unless-stopped \
-            -p "${HOST_PORT}:8080" \
+            --network host \
+            -v "${UPLOADS_DIR}:/app/uploads" \
             --env-file /tmp/momlaunchpad.env \
             --log-driver json-file \
             --log-opt max-size=10m \
             --log-opt max-file=3 \
-            "${IMAGE}:${RESOLVED_TAG}"
+            "${IMAGE}:${RESOLVED_TAG}")
 
-          sleep 10
-          curl -fsS "http://localhost:${HOST_PORT}/health"
+          if [ -z "${CONTAINER_ID}" ]; then
+            echo "Failed to start container — no container ID returned"
+            exit 1
+          fi
+          echo "Container started: ${CONTAINER_ID}"
 
-          # Post-deploy migrations (runs on server; DATABASE_URL from env file on host)
+          sleep 5
+          if ! docker ps --filter "name=^momlaunchpad-api$" --filter "status=running" -q | grep -q .; then
+            echo "=== momlaunchpad-api failed to stay running ==="
+            docker ps -a --filter "name=^momlaunchpad-api$"
+            docker logs momlaunchpad-api 2>&1 | tail -100 || true
+            exit 1
+          fi
+
+          NETWORK_MODE=$(docker inspect momlaunchpad-api --format '{{.HostConfig.NetworkMode}}')
+          if [ "${NETWORK_MODE}" != "host" ]; then
+            echo "Expected NetworkMode=host, got ${NETWORK_MODE}"
+            exit 1
+          fi
+          echo "NetworkMode=host confirmed"
+
+          echo "Waiting for http://localhost:${HOST_PORT}/health ..."
+          ok=0
+          for i in $(seq 1 20); do
+            if curl -fsS "http://localhost:${HOST_PORT}/health" >/dev/null; then
+              ok=1
+              break
+            fi
+            echo "Health check attempt ${i}/20 failed, retrying..."
+            sleep 3
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "=== Health check failed ==="
+            docker logs momlaunchpad-api 2>&1 | tail -100 || true
+            exit 1
+          fi
+          echo "Health check OK"
+
+          # Post-deploy migrations (host can reach localhost Postgres the same way as the app)
           set -a
           # shellcheck disable=SC1091
           source /tmp/momlaunchpad.env

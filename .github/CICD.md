@@ -35,17 +35,19 @@ This project uses GitHub Actions for continuous integration and deployment.
 
 **Image tag on release:** Tries `0.1.4` (no `v`), then `sha-<commit>` from the last `main` CI build, then `latest`. Tag releases after CI has passed on `main` for that commit.
 
-**Host port:** MomLaunchpad binds **`8083`** on the server (`8080` inside the container) so it can run beside legacy services on port 8080. Nginx must proxy to `127.0.0.1:8083` (see `deploy/nginx/api.themobileprof.com.conf`).
+**Host port:** MomLaunchpad listens on **`8083`** on the server (`PORT=8083` is set at deploy time). The container uses **`--network host`** so `DATABASE_URL=...@localhost:5432/...` works when Postgres only binds to `127.0.0.1` (typical on DigitalOcean/LAMP VPS). Nginx must proxy to `127.0.0.1:8083` (see `deploy/nginx/api.themobileprof.com.conf`).
+
+**Database/Redis URLs:** In `ENV_FILE`, use **`localhost`** (or `127.0.0.1`) for Postgres/Redis on the same VM — not `172.17.0.1` or `host.docker.internal`. Deploy uses host networking specifically because bridge access to Postgres often times out unless you reconfigure `listen_addresses` and `pg_hba.conf`.
 
 **Deployment Steps:**
 1. SSH into production/staging server
-2. Pull Docker image from registry
-3. Stop old container
-4. Start new container with environment variables
-5. Run database migrations
-6. Health check verification
-7. Clean up old images
-8. Run database migrations on the server (from the deployed image’s `/app/migrations`)
+2. Write `ENV_FILE` secret to a temporary env file on the server
+3. Pull Docker image from Docker Hub (semver tag → `sha-*` → `latest`)
+4. Stop and replace **only** `momlaunchpad-api` (other containers untouched)
+5. Start new container with **`--network host`**, `PORT=8083`, and persistent uploads volume
+6. Verify `NetworkMode=host` and `/health` on port 8083
+7. Run database migrations on the server (from the deployed image’s `/app/migrations`)
+8. Clean up env file and old images
 
 **Environments:**
 - Production
@@ -77,8 +79,10 @@ DOCKERHUB_TOKEN=your-dockerhub-access-token
 # Copy your entire .env file and save as ENV_FILE secret
 ENV_FILE=<paste your entire production .env file here>
 # This should include:
-# - DATABASE_URL
-# - REDIS_URL
+# - DATABASE_URL=postgresql://user:pass@localhost:5432/momlaunchpad?sslmode=disable
+# - REDIS_URL=redis://localhost:6379/0  (if enabled)
+# - Do NOT use host.docker.internal or 172.17.0.1 — deploy uses --network host
+# - PORT and UPLOAD_DIR are set by the deploy workflow; omit or they will be overwritten
 # - DEEPSEEK_API_KEY
 # - JWT_SECRET
 # - All other environment variables from .env.example
@@ -382,18 +386,19 @@ docker images | grep momlaunchpad
 docker stop momlaunchpad-api
 docker rm momlaunchpad-api
 
-# Start previous version
+# Start previous version (--network host, same as production deploy)
 docker run -d \
   --name momlaunchpad-api \
   --restart unless-stopped \
-  -p 8080:8080 \
-  -e DATABASE_URL="..." \
-  -e DEEPSEEK_API_KEY="..." \
-  -e JWT_SECRET="..." \
-  ghcr.io/your-org/momlaunchpad-be:v1.0.0
+  --network host \
+  -v /var/www/momlaunchpad-api/uploads:/app/uploads \
+  --env-file /path/to/production.env \
+  -e PORT=8083 \
+  -e UPLOAD_DIR=/app/uploads \
+  YOUR_DOCKERHUB_USER/momlaunchpad-be:v1.0.0
 
 # Verify
-curl http://localhost:8080/health
+curl http://localhost:8083/health
 ```
 
 ### Database Rollback
