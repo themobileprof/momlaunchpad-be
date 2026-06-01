@@ -96,7 +96,7 @@ STAGING_SSH_HOST=staging-server-ip
 STAGING_SSH_USERNAME=deploy
 
 # DockerHub
-DOCKER_USERNAME=your-dockerhub-username
+DOCKERHUB_USERNAME=your-dockerhub-username
 DOCKERHUB_TOKEN=your-dockerhub-access-token
 
 # Environment Variables (RECOMMENDED: Single Secret)
@@ -131,7 +131,7 @@ gh secret set ENV_FILE < .env.production
 gh secret set SSH_HOST -b"1.2.3.4"
 gh secret set SSH_USERNAME -b"deploy"
 gh secret set SSH_PRIVATE_KEY < ~/.ssh/deploy_key
-gh secret set DOCKER_USERNAME -b"your-dockerhub-username"
+gh secret set DOCKERHUB_USERNAME -b"your-dockerhub-username"
 gh secret set DOCKERHUB_TOKEN -b"your-dockerhub-token"
 
 # Via GitHub Web UI
