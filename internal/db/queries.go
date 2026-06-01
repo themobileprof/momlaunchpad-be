@@ -533,21 +533,40 @@ func (db *DB) GetAllSystemSettings(ctx context.Context) ([]SystemSetting, error)
 // CreateReminder creates a new reminder
 func (db *DB) CreateReminder(ctx context.Context, reminder *Reminder) error {
 	query := `
-		INSERT INTO reminders (user_id, title, description, reminder_time, is_completed)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO reminders (user_id, title, description, reminder_time, is_completed, community_event_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at
 	`
 
 	return db.QueryRowContext(ctx, query,
 		reminder.UserID, reminder.Title, reminder.Description,
-		reminder.ReminderTime, reminder.IsCompleted,
+		reminder.ReminderTime, reminder.IsCompleted, reminder.CommunityEventID,
 	).Scan(&reminder.ID, &reminder.CreatedAt, &reminder.UpdatedAt)
+}
+
+func scanReminder(scanner interface {
+	Scan(dest ...any) error
+}) (Reminder, error) {
+	var reminder Reminder
+	var communityEventID sql.NullString
+	if err := scanner.Scan(
+		&reminder.ID, &reminder.UserID, &reminder.Title, &reminder.Description,
+		&reminder.ReminderTime, &reminder.IsCompleted, &communityEventID,
+		&reminder.CreatedAt, &reminder.UpdatedAt,
+	); err != nil {
+		return Reminder{}, err
+	}
+	if communityEventID.Valid {
+		id := communityEventID.String
+		reminder.CommunityEventID = &id
+	}
+	return reminder, nil
 }
 
 // GetUserReminders retrieves all reminders for a user
 func (db *DB) GetUserReminders(ctx context.Context, userID string) ([]Reminder, error) {
 	query := `
-		SELECT id, user_id, title, description, reminder_time, is_completed, created_at, updated_at
+		SELECT id, user_id, title, description, reminder_time, is_completed, community_event_id, created_at, updated_at
 		FROM reminders
 		WHERE user_id = $1
 		ORDER BY reminder_time ASC
@@ -561,9 +580,8 @@ func (db *DB) GetUserReminders(ctx context.Context, userID string) ([]Reminder, 
 
 	reminders := make([]Reminder, 0)
 	for rows.Next() {
-		var reminder Reminder
-		if err := rows.Scan(&reminder.ID, &reminder.UserID, &reminder.Title, &reminder.Description,
-			&reminder.ReminderTime, &reminder.IsCompleted, &reminder.CreatedAt, &reminder.UpdatedAt); err != nil {
+		reminder, err := scanReminder(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
 		reminders = append(reminders, reminder)
@@ -603,16 +621,12 @@ func (db *DB) GetEnabledLanguages(ctx context.Context) ([]Language, error) {
 // GetReminderByID retrieves a reminder by ID
 func (db *DB) GetReminderByID(ctx context.Context, id string) (*Reminder, error) {
 	query := `
-		SELECT id, user_id, title, description, reminder_time, is_completed, created_at, updated_at
+		SELECT id, user_id, title, description, reminder_time, is_completed, community_event_id, created_at, updated_at
 		FROM reminders
 		WHERE id = $1
 	`
 
-	reminder := &Reminder{}
-	err := db.QueryRowContext(ctx, query, id).Scan(
-		&reminder.ID, &reminder.UserID, &reminder.Title, &reminder.Description,
-		&reminder.ReminderTime, &reminder.IsCompleted, &reminder.CreatedAt, &reminder.UpdatedAt,
-	)
+	reminder, err := scanReminder(db.QueryRowContext(ctx, query, id))
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -620,7 +634,7 @@ func (db *DB) GetReminderByID(ctx context.Context, id string) (*Reminder, error)
 		return nil, fmt.Errorf("failed to get reminder: %w", err)
 	}
 
-	return reminder, nil
+	return &reminder, nil
 }
 
 // UpdateReminder updates a reminder

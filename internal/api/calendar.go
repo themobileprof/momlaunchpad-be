@@ -38,15 +38,16 @@ type UpdateReminderRequest struct {
 
 // ReminderResponse represents a reminder response
 type ReminderResponse struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	Title        string    `json:"title"`
-	Description  string    `json:"description,omitempty"`
-	ReminderTime time.Time `json:"reminder_time"`
-	Priority     string    `json:"priority"` // Added default priority
-	IsCompleted  bool      `json:"is_completed"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	UserID           string    `json:"user_id"`
+	Title            string    `json:"title"`
+	Description      string    `json:"description,omitempty"`
+	ReminderTime     time.Time `json:"reminder_time"`
+	Priority         string    `json:"priority"` // Added default priority
+	IsCompleted      bool      `json:"is_completed"`
+	CommunityEventID *string   `json:"community_event_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // CreateReminder creates a new reminder
@@ -171,14 +172,15 @@ func reminderToResponse(reminder *db.Reminder) ReminderResponse {
 	}
 
 	return ReminderResponse{
-		ID:           reminder.ID,
-		UserID:       reminder.UserID,
-		Title:        reminder.Title,
-		Description:  description,
-		ReminderTime: reminder.ReminderTime,
-		Priority:     "medium", // Default until added to DB
-		IsCompleted:  reminder.IsCompleted,
-		CreatedAt:    reminder.CreatedAt,
-		UpdatedAt:    reminder.UpdatedAt,
+		ID:               reminder.ID,
+		UserID:           reminder.UserID,
+		Title:            reminder.Title,
+		Description:      description,
+		ReminderTime:     reminder.ReminderTime,
+		Priority:         "medium", // Default until added to DB
+		IsCompleted:      reminder.IsCompleted,
+		CommunityEventID: reminder.CommunityEventID,
+		CreatedAt:        reminder.CreatedAt,
+		UpdatedAt:        reminder.UpdatedAt,
 	}
 }

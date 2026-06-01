@@ -638,7 +638,82 @@ func (db *DB) ToggleEventInterest(ctx context.Context, eventID, userID string) (
 	if err != nil {
 		return interested, 0, err
 	}
+
+	if err := syncCommunityEventReminderTx(ctx, tx, userID, eventID, interested); err != nil {
+		return interested, 0, err
+	}
+
 	return interested, count, tx.Commit()
+}
+
+func syncCommunityEventReminderTx(ctx context.Context, tx *sql.Tx, userID, eventID string, interested bool) error {
+	if !interested {
+		_, err := tx.ExecContext(ctx,
+			`DELETE FROM reminders WHERE user_id = $1 AND community_event_id = $2`,
+			userID, eventID,
+		)
+		return err
+	}
+
+	var title string
+	var description, venue, city, stateProvince, country sql.NullString
+	var startsAt time.Time
+	err := tx.QueryRowContext(ctx, `
+		SELECT title, description, venue, starts_at, city, state_province, country
+		FROM community_events
+		WHERE id = $1
+	`, eventID).Scan(&title, &description, &venue, &startsAt, &city, &stateProvince, &country)
+	if err != nil {
+		return err
+	}
+
+	reminderDescription := buildCommunityEventReminderDescription(
+		description, venue, city, stateProvince, country,
+	)
+
+	_, err = tx.ExecContext(ctx,
+		`DELETE FROM reminders WHERE user_id = $1 AND community_event_id = $2`,
+		userID, eventID,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO reminders (user_id, title, description, reminder_time, is_completed, community_event_id)
+		VALUES ($1, $2, $3, $4, FALSE, $5)
+	`, userID, title, reminderDescription, startsAt, eventID)
+	return err
+}
+
+func buildCommunityEventReminderDescription(
+	description, venue, city, stateProvince, country sql.NullString,
+) *string {
+	var parts []string
+	if description.Valid && strings.TrimSpace(description.String) != "" {
+		parts = append(parts, strings.TrimSpace(description.String))
+	}
+	if venue.Valid && strings.TrimSpace(venue.String) != "" {
+		parts = append(parts, "Venue: "+strings.TrimSpace(venue.String))
+	}
+
+	locationParts := make([]string, 0, 3)
+	if city.Valid && strings.TrimSpace(city.String) != "" {
+		locationParts = append(locationParts, strings.TrimSpace(city.String))
+	}
+	if stateProvince.Valid && strings.TrimSpace(stateProvince.String) != "" {
+		locationParts = append(locationParts, strings.TrimSpace(stateProvince.String))
+	}
+	if country.Valid && strings.TrimSpace(country.String) != "" {
+		locationParts = append(locationParts, strings.TrimSpace(country.String))
+	}
+	if len(locationParts) > 0 {
+		parts = append(parts, strings.Join(locationParts, ", "))
+	}
+
+	parts = append(parts, "Added from MomLaunchpad Community")
+	text := strings.Join(parts, "\n\n")
+	return &text
 }
 
 // FollowUser creates a follow relationship.
