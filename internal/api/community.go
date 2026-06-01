@@ -399,7 +399,7 @@ func (h *CommunityHandler) CreatePost(c *gin.Context) {
 		}
 	}
 
-	imageURLs, err := validateHTTPSImageURLs(req.ImageURLs, 4)
+	imageURLs, err := validateHTTPSImageURLs(req.ImageURLs, maxCommunityPostImages)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

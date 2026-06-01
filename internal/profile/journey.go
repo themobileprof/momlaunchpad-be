@@ -30,12 +30,12 @@ var AllowedTransitions = map[string][]string{
 
 // StageSaveInput captures journey fields from profile/onboarding requests.
 type StageSaveInput struct {
-	Stage          string
-	PregnancyWeek  *int
-	ExpectedDue    *time.Time
-	BabyBirthDate  *time.Time
-	LossDate       *time.Time
-	IsFirstPreg    *bool
+	Stage         string
+	PregnancyWeek *int
+	ExpectedDue   *time.Time
+	BabyBirthDate *time.Time
+	LossDate      *time.Time
+	IsFirstPreg   *bool
 }
 
 // NormalizeStage trims and validates a journey stage value.
@@ -84,10 +84,6 @@ func ValidateStageProfile(stage string, input StageSaveInput, isOnboarding bool)
 		}
 	case StageTTC, StageMiscarriage:
 		// No additional required fields.
-	}
-
-	if isOnboarding && stage == StageMiscarriage && input.LossDate == nil {
-		// Loss date is optional even on onboarding.
 	}
 
 	return nil

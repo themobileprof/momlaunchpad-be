@@ -40,28 +40,28 @@ func NewProfileHandler(database *db.DB, photos *storage.ProfilePhotoStore) *Prof
 
 // ProfileResponse is the user's profile and known facts for personalization.
 type ProfileResponse struct {
-	Name                 string            `json:"name"`
-	Language             string            `json:"language"`
-	OnboardingCompleted  bool              `json:"onboarding_completed"`
-	JourneyStage         string            `json:"journey_stage,omitempty"`
-	JourneyStageSince    *time.Time        `json:"journey_stage_since,omitempty"`
-	BabyBirthDate        *time.Time        `json:"baby_birth_date,omitempty"`
-	LossDate             *time.Time        `json:"loss_date,omitempty"`
-	PregnancyWeek        *int              `json:"pregnancy_week,omitempty"`
-	ExpectedDeliveryDate *time.Time        `json:"expected_delivery_date,omitempty"`
-	PregnancyStartDate   *time.Time        `json:"pregnancy_start_date,omitempty"`
-	IsFirstPregnancy     *bool             `json:"is_first_pregnancy,omitempty"`
-	PrimaryConcern       *string           `json:"primary_concern,omitempty"`
-	DietPreference       *string           `json:"diet_preference,omitempty"`
-	ProfilePhotoURL      *string           `json:"profile_photo_url,omitempty"`
-	Country              *string           `json:"country,omitempty"`
-	CountryCode          *string           `json:"country_code,omitempty"`
-	StateProvince        *string           `json:"state_province,omitempty"`
-	City                 *string           `json:"city,omitempty"`
-	CommunityOnboardingCompleted bool        `json:"community_onboarding_completed"`
-	CommunityInterests   []string          `json:"community_interests,omitempty"`
-	LearnedFacts         map[string]string `json:"learned_facts,omitempty"`
-	Facts                map[string]string `json:"facts,omitempty"`
+	Name                         string            `json:"name"`
+	Language                     string            `json:"language"`
+	OnboardingCompleted          bool              `json:"onboarding_completed"`
+	JourneyStage                 string            `json:"journey_stage,omitempty"`
+	JourneyStageSince            *time.Time        `json:"journey_stage_since,omitempty"`
+	BabyBirthDate                *time.Time        `json:"baby_birth_date,omitempty"`
+	LossDate                     *time.Time        `json:"loss_date,omitempty"`
+	PregnancyWeek                *int              `json:"pregnancy_week,omitempty"`
+	ExpectedDeliveryDate         *time.Time        `json:"expected_delivery_date,omitempty"`
+	PregnancyStartDate           *time.Time        `json:"pregnancy_start_date,omitempty"`
+	IsFirstPregnancy             *bool             `json:"is_first_pregnancy,omitempty"`
+	PrimaryConcern               *string           `json:"primary_concern,omitempty"`
+	DietPreference               *string           `json:"diet_preference,omitempty"`
+	ProfilePhotoURL              *string           `json:"profile_photo_url,omitempty"`
+	Country                      *string           `json:"country,omitempty"`
+	CountryCode                  *string           `json:"country_code,omitempty"`
+	StateProvince                *string           `json:"state_province,omitempty"`
+	City                         *string           `json:"city,omitempty"`
+	CommunityOnboardingCompleted bool              `json:"community_onboarding_completed"`
+	CommunityInterests           []string          `json:"community_interests,omitempty"`
+	LearnedFacts                 map[string]string `json:"learned_facts,omitempty"`
+	Facts                        map[string]string `json:"facts,omitempty"`
 }
 
 // ProfileSaveRequest captures editable profile fields.
@@ -515,27 +515,27 @@ func buildProfileResponse(user *db.User, facts []db.UserFact) ProfileResponse {
 	}
 
 	return ProfileResponse{
-		Name:                 name,
-		Language:             user.Language,
-		OnboardingCompleted:  user.OnboardingCompletedAt != nil,
-		JourneyStage:         journeyStageValue(user),
-		JourneyStageSince:    user.JourneyStageSince,
-		BabyBirthDate:        user.BabyBirthDate,
-		LossDate:             user.LossDate,
-		PregnancyWeek:        pregnancyWeek,
-		ExpectedDeliveryDate: user.ExpectedDeliveryDate,
-		PregnancyStartDate:   user.PregnancyStartDate,
-		IsFirstPregnancy:     user.IsFirstPregnancy,
-		PrimaryConcern:       user.PrimaryConcern,
-		DietPreference:       user.DietPreference,
-		ProfilePhotoURL:      user.ProfilePhotoURL,
-		Country:              user.Country,
-		CountryCode:          user.CountryCode,
-		StateProvince:        user.StateProvince,
-		City:                 user.City,
+		Name:                         name,
+		Language:                     user.Language,
+		OnboardingCompleted:          user.OnboardingCompletedAt != nil,
+		JourneyStage:                 journeyStageValue(user),
+		JourneyStageSince:            user.JourneyStageSince,
+		BabyBirthDate:                user.BabyBirthDate,
+		LossDate:                     user.LossDate,
+		PregnancyWeek:                pregnancyWeek,
+		ExpectedDeliveryDate:         user.ExpectedDeliveryDate,
+		PregnancyStartDate:           user.PregnancyStartDate,
+		IsFirstPregnancy:             user.IsFirstPregnancy,
+		PrimaryConcern:               user.PrimaryConcern,
+		DietPreference:               user.DietPreference,
+		ProfilePhotoURL:              user.ProfilePhotoURL,
+		Country:                      user.Country,
+		CountryCode:                  user.CountryCode,
+		StateProvince:                user.StateProvince,
+		City:                         user.City,
 		CommunityOnboardingCompleted: user.CommunityOnboardingAt != nil,
-		LearnedFacts:         learnedFacts,
-		Facts:                allFacts,
+		LearnedFacts:                 learnedFacts,
+		Facts:                        allFacts,
 	}
 }
 

@@ -13,63 +13,63 @@ import (
 
 // CommunityPost is a feed post.
 type CommunityPost struct {
-	ID                string
-	UserID            string
-	Body              string
-	IsAnonymous       bool
-	Category          string
-	Scope             string
-	MedicalRelevance  string
-	IsEvent           bool
-	SafetyFlag        bool
-	SpamScore         float32
-	Status            string
-	Country           *string
-	StateProvince     *string
-	City              *string
-	LikeCount         int
-	ReplyCount        int
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	AuthorName        *string
-	AuthorPhotoURL      *string
-	AuthorBadges        []string
-	LikedByMe           bool
-	ImageURLs           []string
+	ID               string
+	UserID           string
+	Body             string
+	IsAnonymous      bool
+	Category         string
+	Scope            string
+	MedicalRelevance string
+	IsEvent          bool
+	SafetyFlag       bool
+	SpamScore        float32
+	Status           string
+	Country          *string
+	StateProvince    *string
+	City             *string
+	LikeCount        int
+	ReplyCount       int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	AuthorName       *string
+	AuthorPhotoURL   *string
+	AuthorBadges     []string
+	LikedByMe        bool
+	ImageURLs        []string
 }
 
 // CommunityReply is a flat reply on a post.
 type CommunityReply struct {
-	ID           string
-	PostID       string
-	UserID       string
-	Body         string
-	IsAnonymous  bool
-	LikeCount    int
-	Status       string
-	CreatedAt    time.Time
-	AuthorName   *string
+	ID             string
+	PostID         string
+	UserID         string
+	Body           string
+	IsAnonymous    bool
+	LikeCount      int
+	Status         string
+	CreatedAt      time.Time
+	AuthorName     *string
 	AuthorPhotoURL *string
-	AuthorBadges []string
-	LikedByMe    bool
+	AuthorBadges   []string
+	LikedByMe      bool
 }
 
 // CommunityEvent is a local event linked to a post.
 type CommunityEvent struct {
-	ID             string
-	PostID         string
-	EventType      *string
-	Title          string
-	Description    *string
-	Venue          *string
-	StartsAt       time.Time
-	EndsAt         *time.Time
-	Country        *string
-	StateProvince  *string
-	City           *string
+	ID              string
+	PostID          string
+	EventType       *string
+	Title           string
+	Description     *string
+	Venue           *string
+	StartsAt        time.Time
+	EndsAt          *time.Time
+	Country         *string
+	StateProvince   *string
+	City            *string
 	InterestedCount int
-	InterestedByMe bool
-	CreatedAt      time.Time
+	InterestedByMe  bool
+	CreatedAt       time.Time
 }
 
 // CommunityNotification is an in-app notification.
@@ -127,7 +127,7 @@ func (db *DB) SetUserCommunityInterests(ctx context.Context, userID string, keys
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM community_user_interests WHERE user_id = $1`, userID); err != nil {
 		return fmt.Errorf("clear interests: %w", err)
@@ -399,7 +399,7 @@ func (db *DB) CreateCommunityReply(ctx context.Context, reply *CommunityReply) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `
 		INSERT INTO community_replies (post_id, user_id, body, is_anonymous, status)
@@ -474,7 +474,7 @@ func (db *DB) TogglePostLike(ctx context.Context, postID, userID string) (liked 
 	if err != nil {
 		return false, 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var exists bool
 	err = tx.QueryRowContext(ctx,
@@ -520,7 +520,7 @@ func (db *DB) ToggleReplyLike(ctx context.Context, replyID, userID string) (like
 	if err != nil {
 		return false, 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var exists bool
 	err = tx.QueryRowContext(ctx,
@@ -609,7 +609,7 @@ func (db *DB) ToggleEventInterest(ctx context.Context, eventID, userID string) (
 	if err != nil {
 		return false, 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var exists bool
 	err = tx.QueryRowContext(ctx,

@@ -9,11 +9,11 @@ import (
 )
 
 type catalogKeyLabelRequest struct {
-	Key       string  `json:"key"`
-	Label     string  `json:"label" binding:"required"`
-	SortOrder *int    `json:"sort_order"`
-	IsEnabled *bool   `json:"is_enabled"`
-	GroupKey  string  `json:"group_key"`
+	Key         string  `json:"key"`
+	Label       string  `json:"label" binding:"required"`
+	SortOrder   *int    `json:"sort_order"`
+	IsEnabled   *bool   `json:"is_enabled"`
+	GroupKey    string  `json:"group_key"`
 	Description *string `json:"description"`
 }
 

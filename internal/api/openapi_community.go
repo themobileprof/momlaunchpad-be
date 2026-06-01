@@ -124,14 +124,14 @@ type CreateCommunityPostRequest struct {
 
 // CommunityReplyJSON is a reply on a post.
 type CommunityReplyJSON struct {
-	ID           string              `json:"id" example:"550e8400-e29b-41d4-a716-446655440001"`
-	PostID       string              `json:"post_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Body         string              `json:"body" example:"We love the UPPAbaby Vista."`
-	IsAnonymous  bool                `json:"is_anonymous" example:"false"`
-	LikeCount    int                 `json:"like_count" example:"0"`
-	LikedByMe    bool                `json:"liked_by_me" example:"false"`
-	CreatedAt    string              `json:"created_at" example:"2026-05-30T12:05:00Z"`
-	Author       CommunityAuthorJSON `json:"author"`
+	ID          string              `json:"id" example:"550e8400-e29b-41d4-a716-446655440001"`
+	PostID      string              `json:"post_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Body        string              `json:"body" example:"We love the UPPAbaby Vista."`
+	IsAnonymous bool                `json:"is_anonymous" example:"false"`
+	LikeCount   int                 `json:"like_count" example:"0"`
+	LikedByMe   bool                `json:"liked_by_me" example:"false"`
+	CreatedAt   string              `json:"created_at" example:"2026-05-30T12:05:00Z"`
+	Author      CommunityAuthorJSON `json:"author"`
 }
 
 // ListCommunityRepliesResponse lists replies for a post.
@@ -174,19 +174,19 @@ type CommunityReportCreatedResponse struct {
 
 // CommunityEventJSON is event metadata linked to a post.
 type CommunityEventJSON struct {
-	ID             string  `json:"id" example:"550e8400-e29b-41d4-a716-446655440003"`
-	PostID         string  `json:"post_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	EventType      *string `json:"event_type" example:"playdate"`
-	Title          string  `json:"title" example:"Park playdate"`
-	Description    *string `json:"description"`
-	Venue          *string `json:"venue" example:"Central Park"`
-	StartsAt       string  `json:"starts_at" example:"2026-06-01T10:00:00Z"`
-	EndsAt         *string `json:"ends_at"`
-	Country        *string `json:"country" example:"United States"`
-	StateProvince  *string `json:"state_province" example:"California"`
-	City           *string `json:"city" example:"Los Angeles"`
-	InterestedCount int    `json:"interested_count" example:"5"`
-	InterestedByMe bool    `json:"interested_by_me" example:"false"`
+	ID              string  `json:"id" example:"550e8400-e29b-41d4-a716-446655440003"`
+	PostID          string  `json:"post_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	EventType       *string `json:"event_type" example:"playdate"`
+	Title           string  `json:"title" example:"Park playdate"`
+	Description     *string `json:"description"`
+	Venue           *string `json:"venue" example:"Central Park"`
+	StartsAt        string  `json:"starts_at" example:"2026-06-01T10:00:00Z"`
+	EndsAt          *string `json:"ends_at"`
+	Country         *string `json:"country" example:"United States"`
+	StateProvince   *string `json:"state_province" example:"California"`
+	City            *string `json:"city" example:"Los Angeles"`
+	InterestedCount int     `json:"interested_count" example:"5"`
+	InterestedByMe  bool    `json:"interested_by_me" example:"false"`
 }
 
 // ToggleEventInterestResponse is returned when marking interest in an event.

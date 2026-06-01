@@ -90,7 +90,9 @@ func TestAdminCreatePlan_Duplicate(t *testing.T) {
 
 type duplicateKeyError struct{}
 
-func (e *duplicateKeyError) Error() string { return `duplicate key value violates unique constraint "plans_code_key"` }
+func (e *duplicateKeyError) Error() string {
+	return `duplicate key value violates unique constraint "plans_code_key"`
+}
 
 func TestAdminListFeatures_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -150,15 +150,15 @@ type UserFact struct {
 
 // Reminder represents a calendar reminder
 type Reminder struct {
-	ID                string    `json:"id"`
-	UserID            string    `json:"user_id"`
-	Title             string    `json:"title"`
-	Description       *string   `json:"description"`
-	ReminderTime      time.Time `json:"reminder_time"`
-	IsCompleted       bool      `json:"is_completed"`
-	CommunityEventID  *string   `json:"community_event_id,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	UserID           string    `json:"user_id"`
+	Title            string    `json:"title"`
+	Description      *string   `json:"description"`
+	ReminderTime     time.Time `json:"reminder_time"`
+	IsCompleted      bool      `json:"is_completed"`
+	CommunityEventID *string   `json:"community_event_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // DoctorVisit represents a prenatal/medical visit record (micro EMR).
