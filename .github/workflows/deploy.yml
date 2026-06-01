@@ -43,11 +43,16 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Configure SSH
+        env:
+          HOST: ${{ steps.vars.outputs.host }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy and run migrations on server
         env:
@@ -59,11 +64,13 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          ssh -p "$PORT" "$USER@$HOST" "cat > /tmp/momlaunchpad.env" << 'ENV_EOF'
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -p $PORT"
+
+          ssh $SSH_OPTS "$USER@$HOST" "cat > /tmp/momlaunchpad.env" << 'ENV_EOF'
           ${{ secrets.ENV_FILE }}
           ENV_EOF
 
-          ssh -p "$PORT" "$USER@$HOST" \
+          ssh $SSH_OPTS "$USER@$HOST" \
             "IMAGE=${IMAGE}" \
             "TAG=${TAG}" \
             "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}" \
