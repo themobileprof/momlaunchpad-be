@@ -35,6 +35,8 @@ This project uses GitHub Actions for continuous integration and deployment.
 
 **Image tag on release:** Tries `0.1.4` (no `v`), then `sha-<commit>` from the last `main` CI build, then `latest`. Tag releases after CI has passed on `main` for that commit.
 
+**Host port:** MomLaunchpad binds **`8083`** on the server (`8080` inside the container) so it can run beside legacy services on port 8080. Nginx must proxy to `127.0.0.1:8083` (see `deploy/nginx/api.themobileprof.com.conf`).
+
 **Deployment Steps:**
 1. SSH into production/staging server
 2. Pull Docker image from registry

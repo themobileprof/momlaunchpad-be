@@ -1,5 +1,10 @@
 name: Deploy to Production
 
+# Host port for MomLaunchpad (container still uses 8080 internally).
+# 8083 avoids conflict with other services on the same VM (e.g. legacy API on 8080).
+env:
+  APP_HOST_PORT: '8083'
+
 on:
   push:
     tags:
@@ -68,6 +73,7 @@ jobs:
           IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          HOST_PORT: ${{ env.APP_HOST_PORT }}
         run: |
           SSH_OPTS="-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -p $PORT"
 
@@ -79,6 +85,7 @@ jobs:
             "IMAGE=${IMAGE}" \
             "TAG=${TAG}" \
             "TAG_FALLBACK=${TAG_FALLBACK}" \
+            "HOST_PORT=${HOST_PORT}" \
             "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}" \
             "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN}" \
             bash -s << 'REMOTE'
@@ -99,13 +106,13 @@ jobs:
             exit 1
           fi
 
-          docker stop momlaunchpad-api 2>/dev/null || true
-          docker rm momlaunchpad-api 2>/dev/null || true
+          # Replace only our container (leave other stacks on the host untouched)
+          docker rm -f momlaunchpad-api 2>/dev/null || true
 
           docker run -d \
             --name momlaunchpad-api \
             --restart unless-stopped \
-            -p 8080:8080 \
+            -p "${HOST_PORT}:8080" \
             --env-file /tmp/momlaunchpad.env \
             --log-driver json-file \
             --log-opt max-size=10m \
@@ -113,7 +120,7 @@ jobs:
             "${IMAGE}:${RESOLVED_TAG}"
 
           sleep 10
-          curl -fsS http://localhost:8080/health
+          curl -fsS "http://localhost:${HOST_PORT}/health"
 
           # Post-deploy migrations (runs on server; DATABASE_URL from env file on host)
           set -a
