@@ -4,46 +4,29 @@ This project uses GitHub Actions for continuous integration and deployment.
 
 ## Workflows
 
-### 1. CI - Test and Lint (`.github/workflows/ci.yml`)
+### 1. CI (`.github/workflows/ci.yml`)
 
 **Triggers:**
-- Push to `main` or `develop` branches
+- Push to `main` or `develop`
 - Pull requests to `main` or `develop`
-
-**Jobs:**
-- **Test:** Runs all tests with PostgreSQL and Redis services
-- **Lint:** Runs golangci-lint
-- **Format:** Checks code formatting
-- **Security:** Runs Gosec security scanner
-
-**Artifacts:**
-- Coverage report (uploaded to Codecov)
-- HTML coverage report
-
----
-
-### 2. Build Docker Image (`.github/workflows/build.yml`)
-
-**Triggers:**
-- Push to `main` branch
 - Version tags (`v*`)
-- Pull requests to `main`
 
-**Actions:**
-- Builds multi-platform Docker image (amd64, arm64)
-- Pushes to GitHub Container Registry (ghcr.io)
-- Runs Trivy vulnerability scan
-- Uploads security results to GitHub Security
+**Jobs (parallel, then build):**
+- **Test** — PostgreSQL + Redis, `go test`, Codecov
+- **Lint** — golangci-lint
+- **Format** — `gofmt` + `go vet`
+- **Security** — Gosec (SARIF to GitHub Security)
+- **Build** — runs after test/lint/format pass
+  - Multi-platform image (amd64, arm64)
+  - **Push** only on `main` or `v*` tags (not on `develop` or PRs)
+  - **Trivy** scan when an image is pushed
+  - PRs and `develop` still build the image to verify the Dockerfile
 
-**Image Tags:**
-- `latest` - Latest main branch
-- `v1.2.3` - Semantic version from tag
-- `main-abc123` - Branch + commit SHA
-- `pr-123` - Pull request number
+**Image tags (when pushed):** `latest`, semver (`0.1.1`, `0.1`), `sha-abc1234`, branch/PR refs
 
 ---
 
-### 3. Deploy to Production (`.github/workflows/deploy.yml`)
+### 2. Deploy to Production (`.github/workflows/deploy.yml`)
 
 **Triggers:**
 - Version tags (`v*`)
