@@ -15,25 +15,19 @@ on:
           - production
           - staging
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   deploy:
     name: Deploy to ${{ github.event.inputs.environment || 'production' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'production' }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set deployment variables
         id: vars
         run: |
-          # Using single SSH_HOST and SSH_USERNAME for production
-          # Add STAGING_SSH_HOST and STAGING_SSH_USERNAME if needed
           if [ "${{ github.event.inputs.environment }}" == "staging" ]; then
             echo "host=${{ secrets.STAGING_SSH_HOST }}" >> $GITHUB_OUTPUT
             echo "user=${{ secrets.STAGING_SSH_USERNAME }}" >> $GITHUB_OUTPUT
@@ -42,89 +36,79 @@ jobs:
             echo "user=${{ secrets.SSH_USERNAME }}" >> $GITHUB_OUTPUT
           fi
           echo "port=22" >> $GITHUB_OUTPUT
-          
-          # Get image tag
+
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-      
-      - name: Deploy to server
+
+      - name: Deploy and run migrations on server
         env:
           HOST: ${{ steps.vars.outputs.host }}
           USER: ${{ steps.vars.outputs.user }}
           PORT: ${{ steps.vars.outputs.port }}
           TAG: ${{ steps.vars.outputs.tag }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE: ${{ env.IMAGE_NAME }}
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          # Write ENV_FILE secret to temporary file on server
-          ssh -p $PORT $USER@$HOST "cat > /tmp/momlaunchpad.env" << 'EOF'
+          ssh -p "$PORT" "$USER@$HOST" "cat > /tmp/momlaunchpad.env" << 'ENV_EOF'
           ${{ secrets.ENV_FILE }}
-          EOF
-          
-          ssh -p $PORT $USER@$HOST << 'EOF'
-            set -e
-            
-            # Pull latest image
-            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ steps.vars.outputs.tag }}
-            
-            # Stop old container
-            docker stop momlaunchpad-api || true
-            docker rm momlaunchpad-api || true
-            
-            # Start new container with env file
-            docker run -d \
-              --name momlaunchpad-api \
-              --restart unless-stopped \
-              -p 8080:8080 \
-              --env-file /tmp/momlaunchpad.env \
-              --log-driver json-file \
-              --log-opt max-size=10m \
-              --log-opt max-file=3 \
-              ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ steps.vars.outputs.tag }}
-            
-            # Clean up env file
-            rm -f /tmp/momlaunchpad.env
-            
-            # Clean up old images
-            docker image prune -af --filter "until=24h"
-            
-            # Wait for health check
-            sleep 10
-            curl -f http://localhost:8080/health || exit 1
-            
-            echo "Deployment successful!"
-          EOF
-      
-      - name: Run database migrations
-        env:
-          HOST: ${{ steps.vars.outputs.host }}
-          USER: ${{ steps.vars.outputs.user }}
-          PORT: ${{ steps.vars.outputs.port }}
-        run: |
-          ssh -p $PORT $USER@$HOST << 'EOF'
-            # Run migrations inside container
-            docker exec momlaunchpad-api /app/migrate -path /app/migrations -database "${{ secrets.DATABASE_URL }}" up || true
-          EOF
-      
-      - name: Notify deployment status
-        if: always()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: |
-            Deployment to ${{ github.event.inputs.environment || 'production' }} ${{ job.status }}
-            Version: ${{ steps.vars.outputs.tag }}
-            Commit: ${{ github.sha }}
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+          ENV_EOF
+
+          ssh -p "$PORT" "$USER@$HOST" \
+            "IMAGE=${IMAGE}" \
+            "TAG=${TAG}" \
+            "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}" \
+            "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN}" \
+            bash -s << 'REMOTE'
+          set -euo pipefail
+
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          docker pull "${IMAGE}:${TAG}"
+
+          docker stop momlaunchpad-api 2>/dev/null || true
+          docker rm momlaunchpad-api 2>/dev/null || true
+
+          docker run -d \
+            --name momlaunchpad-api \
+            --restart unless-stopped \
+            -p 8080:8080 \
+            --env-file /tmp/momlaunchpad.env \
+            --log-driver json-file \
+            --log-opt max-size=10m \
+            --log-opt max-file=3 \
+            "${IMAGE}:${TAG}"
+
+          sleep 10
+          curl -fsS http://localhost:8080/health
+
+          # Post-deploy migrations (runs on server; DATABASE_URL from env file on host)
+          set -a
+          # shellcheck disable=SC1091
+          source /tmp/momlaunchpad.env
+          set +a
+
+          rm -rf /tmp/momlaunchpad-migrations
+          docker cp momlaunchpad-api:/app/migrations /tmp/momlaunchpad-migrations
+          docker run --rm \
+            --network host \
+            -v /tmp/momlaunchpad-migrations:/migrations \
+            migrate/migrate:v4.16.2 \
+            -path=/migrations \
+            -database "${DATABASE_URL}" \
+            up
+          rm -rf /tmp/momlaunchpad-migrations
+
+          rm -f /tmp/momlaunchpad.env
+          docker image prune -af --filter "until=24h"
+
+          echo "Deploy and migrations complete."
+          REMOTE

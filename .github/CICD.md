@@ -57,27 +57,13 @@ This project uses GitHub Actions for continuous integration and deployment.
 5. Run database migrations
 6. Health check verification
 7. Clean up old images
-8. Send Slack notification
+8. Run database migrations on the server (from the deployed image’s `/app/migrations`)
 
 **Environments:**
 - Production
 - Staging
 
----
-
-### 4. Database Migrations (`.github/workflows/migrate.yml`)
-
-**Triggers:**
-- Manual workflow dispatch only
-
-**Options:**
-- Environment: staging or production
-- Direction: up or down
-- Steps: number of migrations to rollback (down only)
-
-**Uses:**
-- golang-migrate tool
-- Direct database connection (no SSH required)
+**Rollbacks:** run `migrate down` manually on the server (not via GitHub Actions).
 
 ---
 
@@ -109,8 +95,6 @@ ENV_FILE=<paste your entire production .env file here>
 # - JWT_SECRET
 # - All other environment variables from .env.example
 
-# Optional: Notifications
-SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
 ### Setting Secrets
@@ -426,14 +410,9 @@ curl http://localhost:8080/health
 
 ### Database Rollback
 
-```bash
-# Via GitHub Actions
-gh workflow run migrate.yml \
-  -f environment=production \
-  -f direction=down \
-  -f steps=1
+Run on the server (not from GitHub Actions):
 
-# Or manually
+```bash
 migrate -path ./migrations \
   -database "$DATABASE_URL" \
   down 1
