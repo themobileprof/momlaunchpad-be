@@ -110,7 +110,14 @@ jobs:
             exit 1
           fi
 
+          # Host network: localhost reaches Postgres on the VM. Rewrite dev-only Docker hosts.
+          if grep -qE 'host\.docker\.internal|172\.17\.0\.1' /tmp/momlaunchpad.env; then
+            echo "Rewriting host.docker.internal and 172.17.0.1 -> localhost in ENV_FILE (--network host on Linux)"
+            sed -i -e 's/host\.docker\.internal/localhost/g' -e 's/172\.17\.0\.1/localhost/g' /tmp/momlaunchpad.env
+          fi
+
           mkdir -p "${DEPLOY_DIR}"
+          ENV_FILE="${DEPLOY_DIR}/.env"
           UPLOADS_DIR="${DEPLOY_DIR}/uploads"
           mkdir -p "${UPLOADS_DIR}"
           chown -R 1000:1000 "${UPLOADS_DIR}" 2>/dev/null || true
@@ -135,13 +142,16 @@ jobs:
           docker rm -f momlaunchpad-api 2>/dev/null || true
 
           # Host network: Postgres on the VM listens on 127.0.0.1 only (same as themobileprof-backend).
-          # Inject PORT and UPLOAD_DIR so they always match this deploy layout.
-          grep -v -E '^(PORT|UPLOAD_DIR)=' /tmp/momlaunchpad.env > /tmp/momlaunchpad.env.tmp
-          mv /tmp/momlaunchpad.env.tmp /tmp/momlaunchpad.env
+          # Inject PORT and UPLOAD_DIR; persist env on disk (view with: cat ${DEPLOY_DIR}/.env)
+          grep -v -E '^(PORT|UPLOAD_DIR)=' /tmp/momlaunchpad.env > "${ENV_FILE}.tmp"
+          mv "${ENV_FILE}.tmp" "${ENV_FILE}"
           {
             echo "PORT=${HOST_PORT}"
             echo "UPLOAD_DIR=/app/uploads"
-          } >> /tmp/momlaunchpad.env
+          } >> "${ENV_FILE}"
+          chmod 600 "${ENV_FILE}"
+          rm -f /tmp/momlaunchpad.env
+          echo "Persistent env: ${ENV_FILE} ($(wc -c < "${ENV_FILE}") bytes)"
 
           echo "Starting container with host networking (port ${HOST_PORT})..."
           CONTAINER_ID=$(docker run -d \
@@ -149,7 +159,7 @@ jobs:
             --restart unless-stopped \
             --network host \
             -v "${UPLOADS_DIR}:/app/uploads" \
-            --env-file /tmp/momlaunchpad.env \
+            --env-file "${ENV_FILE}" \
             --log-driver json-file \
             --log-opt max-size=10m \
             --log-opt max-file=3 \
@@ -196,7 +206,7 @@ jobs:
           # Post-deploy migrations (host can reach localhost Postgres the same way as the app)
           set -a
           # shellcheck disable=SC1091
-          source /tmp/momlaunchpad.env
+          source "${ENV_FILE}"
           set +a
 
           rm -rf /tmp/momlaunchpad-migrations
@@ -210,7 +220,6 @@ jobs:
             up
           rm -rf /tmp/momlaunchpad-migrations
 
-          rm -f /tmp/momlaunchpad.env
           docker image prune -af --filter "until=24h"
 
           echo "Deploy and migrations complete."

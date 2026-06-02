@@ -78,10 +78,13 @@ DOCKERHUB_TOKEN=your-dockerhub-access-token
 # Environment Variables (RECOMMENDED: Single Secret)
 # Copy your entire .env file and save as ENV_FILE secret
 ENV_FILE=<paste your entire production .env file here>
+
+# On the server after deploy, the same content is written to:
+#   /var/www/momlaunchpad-api/.env   (chmod 600 — view: cat /var/www/momlaunchpad-api/.env)
 # This should include:
 # - DATABASE_URL=postgresql://user:pass@localhost:5432/momlaunchpad?sslmode=disable
 # - REDIS_URL=redis://localhost:6379/0  (if enabled)
-# - Do NOT use host.docker.internal or 172.17.0.1 — deploy uses --network host
+# - Prefer localhost for DB/Redis on the same VM (deploy rewrites host.docker.internal / 172.17.0.1 if present)
 # - PORT and UPLOAD_DIR are set by the deploy workflow; omit or they will be overwritten
 # - DEEPSEEK_API_KEY
 # - JWT_SECRET
