@@ -35,7 +35,7 @@ This project uses GitHub Actions for continuous integration and deployment.
 
 **Image tag on release:** Tries `0.1.4` (no `v`), then `sha-<commit>` from the last `main` CI build, then `latest`. Tag releases after CI has passed on `main` for that commit.
 
-**Host port:** MomLaunchpad listens on **`8083`** on the server (`PORT=8083` is set at deploy time). The container uses **`--network host`** so `DATABASE_URL=...@localhost:5432/...` works when Postgres only binds to `127.0.0.1` (typical on DigitalOcean/LAMP VPS). Nginx must proxy to `127.0.0.1:8083` (see `deploy/nginx/api.themobileprof.com.conf`).
+**Host port:** MomLaunchpad listens on **`8083`** on the server (`PORT=8083` is set at deploy time). The container uses **`--network host`** so `DATABASE_URL=...@localhost:5432/...` works when Postgres only binds to `127.0.0.1` (typical on DigitalOcean/LAMP VPS). Nginx for MomLaunchpad: `deploy/nginx/api.momlaunchpad.com.conf` → `127.0.0.1:8083`. **Do not** use `api.themobileprof.com.conf` for MomLaunchpad — that vhost is for legacy `themobileprof-backend` on port **3000**.
 
 **Database/Redis URLs:** In `ENV_FILE`, use **`localhost`** (or `127.0.0.1`) for Postgres/Redis on the same VM — not `172.17.0.1` or `host.docker.internal`. Deploy uses host networking specifically because bridge access to Postgres often times out unless you reconfigure `listen_addresses` and `pg_hba.conf`.
 
